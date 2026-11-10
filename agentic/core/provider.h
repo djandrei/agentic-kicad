@@ -20,6 +20,8 @@
 #ifndef AGENTIC_PROVIDER_H
 #define AGENTIC_PROVIDER_H
 
+#include <vector>
+
 #include <wx/string.h>
 
 namespace AGENTIC
@@ -50,6 +52,13 @@ public:
 
     /// Human name for the hub button and the viewer title, e.g. "PCB".
     virtual wxString Title() const { return Name(); }
+
+    /**
+     * Other programs compiled into the same kiface, each with its own tool group and viewer
+     * (the symbol editor in eeschema, the footprint editor in pcbnew).  The host registers them
+     * like the kiface's own provider.
+     */
+    virtual std::vector<AGENT_PROVIDER*> Companions() { return {}; }
 
     /// Add the program's tools, resources and prompts.  Called once, on the main thread.
     virtual void Register( AGENTIC::AGENT_SERVICES& aServices ) {}

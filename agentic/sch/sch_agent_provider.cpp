@@ -27,6 +27,8 @@
 #include <agentic/sch/sch_library_tools.h>
 #include <agentic/sch/sch_tools.h>
 #include <agentic/sch/sch_viewer.h>
+#include <agentic/sch/sym_tools.h>
+#include <agentic/sch/sym_viewer.h>
 
 #include <erc/erc_item.h>
 #include <libraries/symbol_library_adapter.h>
@@ -35,11 +37,29 @@
 namespace
 {
 
+/// The symbol editor: compiled into eeschema, its own tool group and viewer.
+class SYM_AGENT_PROVIDER : public AGENT_PROVIDER
+{
+public:
+    wxString Name() const override { return wxS( "sym" ); }
+    wxString Title() const override { return wxS( "Symbol Editor" ); }
+
+    void Register( AGENTIC::AGENT_SERVICES& aServices ) override { AGENTIC::RegisterSymbolEditorTools( aServices ); }
+
+    AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject ) override
+    {
+        return AGENTIC::CreateSymViewer( aServices, aProject );
+    }
+};
+
+
 class SCH_AGENT_PROVIDER : public AGENT_PROVIDER
 {
 public:
     wxString Name() const override { return wxS( "sch" ); }
     wxString Title() const override { return wxS( "Schematic" ); }
+
+    std::vector<AGENT_PROVIDER*> Companions() override { return { &m_symbolEditor }; }
 
     void Register( AGENTIC::AGENT_SERVICES& aServices ) override
     {
@@ -64,6 +84,9 @@ public:
     {
         return AGENTIC::CreateSchViewer( aServices, aProject );
     }
+
+private:
+    SYM_AGENT_PROVIDER m_symbolEditor;
 };
 
 } // namespace

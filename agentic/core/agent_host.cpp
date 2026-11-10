@@ -282,7 +282,15 @@ void AGENT_HOST::findProviders( KIWAY* aKiway )
         m_providers.push_back( info );
 
         if( info.provider )
+        {
             info.provider->Register( m_services );
+
+            for( AGENT_PROVIDER* companion : info.provider->Companions() )
+            {
+                m_providers.push_back( PROVIDER_INFO{ name, companion, "" } );
+                companion->Register( m_services );
+            }
+        }
     }
 }
 

@@ -122,6 +122,9 @@ set( AGENTIC_SCH_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_library_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_viewer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_lib_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_viewer.cpp
 )
 
 target_sources( pcbnew_kiface_objects PRIVATE ${AGENTIC_PCB_SOURCES} )
