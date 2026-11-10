@@ -15,3 +15,17 @@ set_tests_properties( qa_agentic_e2e
 )
 
 setup_qa_env( qa_agentic_e2e )
+
+# Timings on the largest demo board against doc/agentic/timings.json (stage 15).
+add_test( NAME qa_agentic_perf
+    COMMAND ${PYTHON_EXECUTABLE} -m pytest -v -s ${CMAKE_SOURCE_DIR}/qa/tests/agentic_perf
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+set_tests_properties( qa_agentic_perf
+    PROPERTIES
+        ENVIRONMENT "KICAD_CLI=$<TARGET_FILE:kicad-cli>;KICAD_BIN=$<TARGET_FILE:kicad>"
+        TIMEOUT 1800
+)
+
+setup_qa_env( qa_agentic_perf )

@@ -1,0 +1,11 @@
+{
+  "board": "demos/jetson-agx-thor-baseboard",
+  "factor": 2.0,
+  "seconds": {
+    "load": 5.35,
+    "commit": 9.16,
+    "undo": 6.83,
+    "drc": 11.5,
+    "schematic_load": 2.2
+  }
+}
