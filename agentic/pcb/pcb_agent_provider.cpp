@@ -28,6 +28,8 @@
 #include <agentic/pcb/pcb_route_tools.h>
 #include <agentic/pcb/pcb_tools.h>
 #include <agentic/pcb/pcb_viewer.h>
+#include <agentic/pcb/view3d_tools.h>
+#include <agentic/pcb/view3d_viewer.h>
 
 #include <drc/drc_item.h>
 #include <footprint_library_adapter.h>
@@ -52,13 +54,29 @@ public:
 };
 
 
+/// The 3D viewer: the board's 3D pictures and camera, group "view3d".
+class VIEW3D_AGENT_PROVIDER : public AGENT_PROVIDER
+{
+public:
+    wxString Name() const override { return wxS( "view3d" ); }
+    wxString Title() const override { return wxS( "3D Viewer" ); }
+
+    void Register( AGENTIC::AGENT_SERVICES& aServices ) override { AGENTIC::RegisterView3dTools( aServices ); }
+
+    AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject ) override
+    {
+        return AGENTIC::CreateView3dViewer( aServices, aProject );
+    }
+};
+
+
 class PCB_AGENT_PROVIDER : public AGENT_PROVIDER
 {
 public:
     wxString Name() const override { return wxS( "pcb" ); }
     wxString Title() const override { return wxS( "PCB" ); }
 
-    std::vector<AGENT_PROVIDER*> Companions() override { return { &m_footprintEditor }; }
+    std::vector<AGENT_PROVIDER*> Companions() override { return { &m_footprintEditor, &m_view3d }; }
 
     void Register( AGENTIC::AGENT_SERVICES& aServices ) override
     {
@@ -86,7 +104,8 @@ public:
     }
 
 private:
-    FP_AGENT_PROVIDER m_footprintEditor;
+    FP_AGENT_PROVIDER     m_footprintEditor;
+    VIEW3D_AGENT_PROVIDER m_view3d;
 };
 
 } // namespace

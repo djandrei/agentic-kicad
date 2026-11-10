@@ -122,6 +122,8 @@ set( AGENTIC_PCB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_viewer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pns_agent_iface.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/view3d_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/view3d_viewer.cpp
 )
 
 set( AGENTIC_SCH_SOURCES
