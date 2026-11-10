@@ -37,6 +37,11 @@
 #include "pl_editor_frame.h"
 #include "pl_editor_settings.h"
 
+#ifdef KICAD_AGENTIC
+#include <agentic/ds/ds_agent_provider.h>
+#include <kiface_ids.h>
+#endif
+
 
 namespace PGE {
 
@@ -118,6 +123,11 @@ static struct IFACE : public KIFACE_BASE, public UNITS_PROVIDER
      */
     void* IfaceOrAddress( int aDataId ) override
     {
+#ifdef KICAD_AGENTIC
+        if( aDataId == KIFACE_AGENT_PROVIDER )
+            return PlEditorAgentProvider();
+#endif
+
         return nullptr;
     }
 

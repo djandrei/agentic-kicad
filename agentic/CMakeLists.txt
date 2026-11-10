@@ -28,6 +28,10 @@ set_property( SOURCE ${CMAKE_SOURCE_DIR}/gerbview/gerbview.cpp
               DIRECTORY ${CMAKE_SOURCE_DIR}/gerbview
               APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
 
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/pagelayout_editor/pl_editor.cpp
+              DIRECTORY ${CMAKE_SOURCE_DIR}/pagelayout_editor
+              APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
+
 # Protocol and transports: no wx dependency.
 add_library( agentic_protocol STATIC
     protocol/json_rpc.cpp
@@ -153,6 +157,21 @@ set( AGENTIC_GERB_SOURCES
 
 target_sources( pcbnew_kiface_objects PRIVATE ${AGENTIC_PCB_SOURCES} )
 target_sources( gerbview_kiface_objects PRIVATE ${AGENTIC_GERB_SOURCES} )
+
+# pl_editor's kiface is a module with its own sources (no object library).
+set( AGENTIC_DS_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ds/ds_agent_provider.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ds/ds_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ds/ds_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ds/ds_viewer.cpp
+)
+
+target_sources( pl_editor_kiface PRIVATE ${AGENTIC_DS_SOURCES} )
+target_link_libraries( pl_editor_kiface agentic_ui agentic_core )
+
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/pagelayout_editor/pl_editor.cpp ${AGENTIC_DS_SOURCES}
+              DIRECTORY ${CMAKE_SOURCE_DIR}/pagelayout_editor
+              APPEND PROPERTY INCLUDE_DIRECTORIES ${AGENTIC_INCLUDE_ROOT} )
 target_sources( eeschema_kiface_objects PRIVATE ${AGENTIC_SCH_SOURCES} )
 
 set_property( SOURCE ${CMAKE_SOURCE_DIR}/pcbnew/pcbnew.cpp ${AGENTIC_PCB_SOURCES}

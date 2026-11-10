@@ -704,6 +704,38 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
 
                      return TOOL_RESULT::Data( result );
                  } } );
+
+    tools.Add( { "sch_drawing_sheet_set",
+                 "Use a drawing sheet for the schematic: a project-relative .kicad_wks (made with ds_create), or \"\" "
+                 "for KiCad's default. It is a project setting (saved in the .kicad_pro).",
+                 "sch", schSchema( { { "drawingSheet", { { "type", "string" } } } }, { "drawingSheet" } ),
+                 [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
+                 {
+                     AGENT_PROJECT*    project = nullptr;
+                     SCH_DOC_SESSION&  s = session( aServices, aArgs, &project );
+                     const std::string sheet = aArgs["drawingSheet"];
+
+                     if( !sheet.empty() )
+                     {
+                         if( fs::path( sheet ).extension() != ".kicad_wks" )
+                             throw TOOL_ERROR( "A drawing sheet is a .kicad_wks file." );
+
+                         if( !fs::exists( project->Files().Resolve( sheet ) ) )
+                             throw TOOL_ERROR( "No drawing sheet '" + sheet + "' in the project." );
+                     }
+
+                     JSON result = project->Mutate( "sch_drawing_sheet_set", aArgs.value( "force", false ),
+                                                    [&]() -> JSON
+                                                    {
+                                                        s.Schematic().Settings().m_SchDrawingSheetFileName =
+                                                                wx( sheet );
+                                                        project->TouchProjectFile();
+                                                        s.RecordChange( { { "summary", "sch_drawing_sheet_set" } } );
+                                                        return JSON{ { "drawingSheet", sheet } };
+                                                    } );
+
+                     return TOOL_RESULT::Data( result );
+                 } } );
 }
 
 } // namespace AGENTIC
