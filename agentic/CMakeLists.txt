@@ -75,6 +75,7 @@ target_link_libraries( agentic_core PUBLIC
 add_library( agentic_ui STATIC
     hub/agent_viewer_mode.cpp
     hub/hub_frame.cpp
+    viewer_shell/agent_viewer.cpp
 )
 
 target_compile_definitions( agentic_ui PRIVATE KICAD_AGENTIC )

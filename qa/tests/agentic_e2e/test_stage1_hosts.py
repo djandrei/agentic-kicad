@@ -22,72 +22,15 @@ Stage 1 acceptance: both hosts serve version and status, over stdio (kicad-cli) 
 """
 
 import os
-import re
 import subprocess
 import sys
-import threading
 
 import pytest
 
 sys.path.insert( 0, os.path.dirname( __file__ ) )
 
 from client import HttpClient, McpError, StdioClient  # noqa: E402
-
-KICAD_CLI = os.environ.get( "KICAD_CLI", "kicad-cli" )
-KICAD_BIN = os.environ.get( "KICAD_BIN", "kicad" )
-
-URL_RE = re.compile( r"listening at (http://\S+)" )
-TOKEN_RE = re.compile( r"Bearer token: (\S+)" )
-
-
-@pytest.fixture
-def isolated_env( tmp_path ):
-    """A private configuration directory, so tests do not touch the user's settings."""
-    env = dict( os.environ )
-    env["KICAD_CONFIG_HOME"] = str( tmp_path / "config" )
-    env["XDG_CONFIG_HOME"] = str( tmp_path / "xdg" )
-    return env
-
-
-def start_http_server( argv, env, timeout=120 ):
-    """Start a server process and read its URL and token from stderr."""
-    proc = subprocess.Popen( argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, env=env, text=True )
-    found = {}
-    lines = []
-    ready = threading.Event()
-
-    def read_stderr():
-        for line in proc.stderr:
-            lines.append( line.rstrip( "\n" ) )
-
-            if m := URL_RE.search( line ):
-                found["url"] = m.group( 1 )
-
-            if m := TOKEN_RE.search( line ):
-                found["token"] = m.group( 1 )
-
-            if "url" in found and "token" in found:
-                ready.set()
-
-    threading.Thread( target=read_stderr, daemon=True ).start()
-    threading.Thread( target=lambda: [ None for _ in proc.stdout ], daemon=True ).start()
-
-    if not ready.wait( timeout ):
-        proc.kill()
-        raise AssertionError( "server did not print its URL and token:\n" + "\n".join( lines ) )
-
-    return proc, found["url"], found["token"]
-
-
-def stop( proc, timeout=30 ):
-    proc.terminate()
-
-    try:
-        return proc.wait( timeout )
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        raise
+from conftest import KICAD_BIN, KICAD_CLI, start_http_server, stop  # noqa: E402
 
 
 def check_core_tools( client, expected_mode ):

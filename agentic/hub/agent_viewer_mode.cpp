@@ -18,7 +18,10 @@
  */
 
 #include <agentic/hub/agent_viewer_mode.h>
+#include <agentic/core/agent_host.h>
 #include <agentic/hub/hub_frame.h>
+
+#include <filesystem>
 
 #include <wx/crt.h>
 
@@ -34,6 +37,18 @@ wxFrame* StartAgentViewerMode( KIWAY* aKiway, const AGENT_LAUNCH_OPTIONS& aOptio
     {
         hub->Destroy();
         return nullptr;
+    }
+
+    if( !aOptions.project.IsEmpty() )
+    {
+        try
+        {
+            hub->Host().Sessions().Open( std::filesystem::path( aOptions.project.ToStdString( wxConvUTF8 ) ), false );
+        }
+        catch( const std::exception& e )
+        {
+            wxFprintf( stderr, "Cannot open the project %s: %s\n", aOptions.project, e.what() );
+        }
     }
 
     hub->Show();
