@@ -27,6 +27,8 @@
 #include <agentic/sch/sch_library_tools.h>
 #include <agentic/sch/sch_tools.h>
 #include <agentic/sch/sch_viewer.h>
+#include <agentic/sch/sim_tools.h>
+#include <agentic/sch/sim_viewer.h>
 #include <agentic/sch/sym_tools.h>
 #include <agentic/sch/sym_viewer.h>
 
@@ -53,13 +55,29 @@ public:
 };
 
 
+/// The simulator: ngspice on the project's schematic, its own tool group and viewer.
+class SIM_AGENT_PROVIDER : public AGENT_PROVIDER
+{
+public:
+    wxString Name() const override { return wxS( "sim" ); }
+    wxString Title() const override { return wxS( "Simulator" ); }
+
+    void Register( AGENTIC::AGENT_SERVICES& aServices ) override { AGENTIC::RegisterSimulatorTools( aServices ); }
+
+    AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject ) override
+    {
+        return AGENTIC::CreateSimViewer( aServices, aProject );
+    }
+};
+
+
 class SCH_AGENT_PROVIDER : public AGENT_PROVIDER
 {
 public:
     wxString Name() const override { return wxS( "sch" ); }
     wxString Title() const override { return wxS( "Schematic" ); }
 
-    std::vector<AGENT_PROVIDER*> Companions() override { return { &m_symbolEditor }; }
+    std::vector<AGENT_PROVIDER*> Companions() override { return { &m_symbolEditor, &m_simulator }; }
 
     void Register( AGENTIC::AGENT_SERVICES& aServices ) override
     {
@@ -93,6 +111,7 @@ public:
 
 private:
     SYM_AGENT_PROVIDER m_symbolEditor;
+    SIM_AGENT_PROVIDER m_simulator;
 };
 
 } // namespace

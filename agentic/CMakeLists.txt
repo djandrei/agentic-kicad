@@ -134,6 +134,8 @@ set( AGENTIC_SCH_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_library_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_viewer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sim_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sim_viewer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_lib_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_viewer.cpp
