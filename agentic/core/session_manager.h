@@ -40,6 +40,9 @@ namespace AGENTIC
 class SESSION_MANAGER
 {
 public:
+    /// Creates a program's library adapter (symbols, footprints) for a project's libraries.
+    using ADAPTER_FACTORY = AGENT_PROJECT::ADAPTER_FACTORY;
+
     explicit SESSION_MANAGER( OBSERVERS& aObservers ) :
             m_observers( aObservers )
     {
@@ -62,15 +65,26 @@ public:
 
     AGENT_PROJECT* Current() const { return m_current; }
 
-    void SetCurrent( AGENT_PROJECT& aProject ) { m_current = &aProject; }
+    void SetCurrent( AGENT_PROJECT& aProject ) { activate( &aProject ); }
 
     std::vector<AGENT_PROJECT*> Projects() const;
 
     /// Find an open project by name or folder; nullptr if not open.
     AGENT_PROJECT* Find( const std::string& aNameOrPath ) const;
 
+    /// Called by providers: every project's library manager gets this adapter.
+    void AddLibraryAdapter( LIBRARY_TABLE_TYPE aType, ADAPTER_FACTORY aFactory );
+
 private:
+    /**
+     * Make \a aProject current.  KiCad expands ${KIPRJMOD} from the environment, set for its
+     * one active project; the agent's projects are loaded passively, so the variable follows
+     * the current project, and the other projects' background library loads are stopped.
+     */
+    void activate( AGENT_PROJECT* aProject );
+
     OBSERVERS&                                  m_observers;
+    AGENT_PROJECT::ADAPTER_FACTORIES            m_adapterFactories;
     std::vector<std::unique_ptr<AGENT_PROJECT>> m_projects;
     AGENT_PROJECT*                              m_current = nullptr;
 };

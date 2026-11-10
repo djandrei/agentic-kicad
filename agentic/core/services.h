@@ -22,6 +22,7 @@
 #define AGENTIC_SERVICES_H
 
 #include <functional>
+#include <map>
 #include <string>
 
 #include <agentic/core/observer.h>
@@ -87,6 +88,13 @@ public:
             m_setPaused( aPaused );
     }
 
+    /// Error codes of a checker ("erc", "drc"), added by its program; docs_error_codes lists them.
+    using CODE_LIST = std::function<JSON()>;
+
+    void AddErrorCodes( const std::string& aChecker, CODE_LIST aList ) { m_errorCodes[aChecker] = std::move( aList ); }
+
+    const std::map<std::string, CODE_LIST>& ErrorCodes() const { return m_errorCodes; }
+
     void SetPauseControl( std::function<bool()> aIsPaused, std::function<void( bool )> aSetPaused )
     {
         m_isPaused = std::move( aIsPaused );
@@ -102,6 +110,8 @@ private:
     bool               m_viewerMode;
     CALL_MESSAGES*     m_messages = nullptr;
     PROGRESS_SINK      m_progressSink;
+
+    std::map<std::string, CODE_LIST> m_errorCodes;
 
     std::function<bool()>       m_isPaused;
     std::function<void( bool )> m_setPaused;

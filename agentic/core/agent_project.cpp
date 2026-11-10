@@ -21,6 +21,7 @@
 #include <agentic/core/agent_project.h>
 #include <agentic/protocol/registry.h>
 
+#include <libraries/library_manager.h>
 #include <lockfile.h>
 #include <pgm_base.h>
 #include <project.h>
@@ -43,12 +44,14 @@ namespace
 } // namespace
 
 
-AGENT_PROJECT::AGENT_PROJECT( const fs::path& aProFile, OBSERVERS& aObservers, bool aForce ) :
+AGENT_PROJECT::AGENT_PROJECT( const fs::path& aProFile, OBSERVERS& aObservers, const ADAPTER_FACTORIES& aFactories,
+                              bool aForce ) :
         m_observers( aObservers ),
         m_files( aProFile.parent_path() ),
         m_history( m_files.Root() ),
         m_name( aProFile.stem().string() ),
-        m_proFile( aProFile.filename().string() )
+        m_proFile( aProFile.filename().string() ),
+        m_adapterFactories( aFactories )
 {
     SETTINGS_MANAGER& mgr = Pgm().GetSettingsManager();
     const wxString    fullPath = wxString::FromUTF8( ( m_files.Root() / m_proFile ).string() );
@@ -100,10 +103,71 @@ AGENT_PROJECT::~AGENT_PROJECT()
     while( !m_sessions.empty() )
         CloseSession( m_sessions.back().get() );
 
+    if( m_libraries )
+    {
+        m_libraries->AbortAsyncLoads( true );
+        m_libraries.reset();
+    }
+
     m_lock.reset();
 
     if( m_project )
         Pgm().GetSettingsManager().UnloadProject( m_project, false );
+}
+
+
+LIBRARY_MANAGER& AGENT_PROJECT::Libraries()
+{
+    if( !m_libraries )
+    {
+        m_libraries = std::make_unique<LIBRARY_MANAGER>( m_project );
+
+        for( const auto& [type, factory] : m_adapterFactories )
+            m_libraries->RegisterAdapter( type, factory( *m_libraries ) );
+
+        m_libraries->LoadGlobalTables();
+        m_libraries->LoadProjectTables( wxString::FromUTF8( Root().string() ) );
+    }
+
+    return *m_libraries;
+}
+
+
+LIBRARY_MANAGER_ADAPTER* AGENT_PROJECT::LibraryAdapter( LIBRARY_TABLE_TYPE aType )
+{
+    std::optional<LIBRARY_MANAGER_ADAPTER*> adapter = Libraries().Adapter( aType );
+    return adapter ? *adapter : nullptr;
+}
+
+
+void AGENT_PROJECT::ReloadLibraryTables()
+{
+    if( !m_libraries )
+        return;
+
+    m_libraries->AbortAsyncLoads( true );
+    m_libraries->LoadProjectTables( wxString::FromUTF8( Root().string() ) );
+}
+
+
+void AGENT_PROJECT::StopLibraryLoads()
+{
+    if( m_libraries )
+        m_libraries->AbortAsyncLoads( true );
+}
+
+
+bool AGENT_PROJECT::IsInsideProject( const wxString& aUri )
+{
+    const wxString  expanded = LIBRARY_MANAGER::ExpandURI( aUri, *m_project );
+    std::error_code ec;
+    const fs::path  path = fs::weakly_canonical( fs::path( expanded.ToStdString( wxConvUTF8 ) ), ec );
+
+    if( ec )
+        return false;
+
+    auto [rootEnd, pathIt] = std::mismatch( Root().begin(), Root().end(), path.begin(), path.end() );
+    return rootEnd == Root().end();
 }
 
 
@@ -340,7 +404,11 @@ void AGENT_PROJECT::reloadAfterRestore( const FILE_HISTORY::STEP& aStep )
 
     for( const FILE_HISTORY::CHANGE& change : aStep.changes )
     {
-        if( change.path == m_proFile )
+        if( change.path == "sym-lib-table" || change.path == "fp-lib-table" || change.path == "design-block-lib-table" )
+        {
+            ReloadLibraryTables();
+        }
+        else if( change.path == m_proFile )
         {
             m_project->GetProjectFile().LoadFromFile( wxString::FromUTF8( Root().string() ) );
             m_proVersion = m_files.Version( m_proFile );

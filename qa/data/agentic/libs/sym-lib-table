@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Agentic_Amplifiers")(type "KiCad")(uri "${KIPRJMOD}/Agentic_Amplifiers.kicad_sym")(options "")(descr "Fixture op amps"))
+)

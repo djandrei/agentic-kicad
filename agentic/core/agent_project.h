@@ -36,6 +36,10 @@
 #include <agentic/core/message_log.h>
 #include <agentic/core/observer.h>
 
+#include <libraries/library_table.h>
+
+class LIBRARY_MANAGER;
+class LIBRARY_MANAGER_ADAPTER;
 class LOCKFILE;
 class PROJECT;
 
@@ -52,12 +56,17 @@ namespace AGENTIC
 class AGENT_PROJECT
 {
 public:
+    using ADAPTER_FACTORY = std::function<std::unique_ptr<LIBRARY_MANAGER_ADAPTER>( LIBRARY_MANAGER& )>;
+    using ADAPTER_FACTORIES = std::vector<std::pair<LIBRARY_TABLE_TYPE, ADAPTER_FACTORY>>;
+
     /**
-     * Open the project whose .kicad_pro is \a aProFile.
+     * Open the project whose .kicad_pro is \a aProFile.  \a aFactories create the programs'
+     * library adapters when the project's libraries are first used.
      *
      * @throw TOOL_ERROR when the project is locked by another KiCad and \a aForce is false.
      */
-    AGENT_PROJECT( const std::filesystem::path& aProFile, OBSERVERS& aObservers, bool aForce );
+    AGENT_PROJECT( const std::filesystem::path& aProFile, OBSERVERS& aObservers, const ADAPTER_FACTORIES& aFactories,
+                   bool aForce );
     ~AGENT_PROJECT();
 
     AGENT_PROJECT( const AGENT_PROJECT& ) = delete;
@@ -76,6 +85,25 @@ public:
 
     /// The KiCad project (text variables, net classes, library tables).
     PROJECT& KicadProject() const { return *m_project; }
+
+    /**
+     * The project's own library manager: the global and project library tables as seen from
+     * this project (${KIPRJMOD} is this folder), with the adapters the programs registered.
+     * Created on first use; separate per project, so several projects can be open at once.
+     */
+    LIBRARY_MANAGER& Libraries();
+
+    /// The adapter of one library type, or nullptr when no program registered it.
+    LIBRARY_MANAGER_ADAPTER* LibraryAdapter( LIBRARY_TABLE_TYPE aType );
+
+    /// Reread the library tables after they changed (lib_add, undo of a table change).
+    void ReloadLibraryTables();
+
+    /// Stop background library loads (another project becomes current, see SESSION_MANAGER).
+    void StopLibraryLoads();
+
+    /// True when a library URI resolves inside the project folder (the agent may change it).
+    bool IsInsideProject( const wxString& aUri );
 
     /// The fork's settings from .agentic/agentic.json (e.g. "disabledGroups").
     const nlohmann::json& Settings() const { return m_settings; }
@@ -136,6 +164,8 @@ private:
     PROJECT*                                  m_project = nullptr;
     std::unique_ptr<LOCKFILE>                 m_lock;
     nlohmann::json                            m_settings = nlohmann::json::object();
+    const ADAPTER_FACTORIES&                  m_adapterFactories;
+    std::unique_ptr<LIBRARY_MANAGER>          m_libraries;
     std::vector<std::unique_ptr<DOC_SESSION>> m_sessions;
     std::set<DOC_SESSION*>                    m_touched;
     bool                                      m_projectFileTouched = false;

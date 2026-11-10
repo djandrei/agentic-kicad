@@ -20,6 +20,9 @@
 #include <agentic/core/agent_host.h>
 #include <agentic/core/agentic_version.h>
 #include <agentic/core/core_tools.h>
+#include <agentic/core/library_tools.h>
+#include <agentic/core/pcm_tools.h>
+#include <agentic/docs/docs_tools.h>
 #include <agentic/core/message_log.h>
 #include <agentic/core/provider.h>
 
@@ -81,6 +84,9 @@ AGENT_HOST::AGENT_HOST( MODE aMode, KIWAY* aKiway, EXECUTOR aExecutor ) :
 
     registerCoreTools();
     RegisterProjectTools( m_services );
+    RegisterLibraryTools( m_services );
+    RegisterDocsTools( m_services, Instructions() );
+    RegisterPcmTools( m_services );
 
     if( aKiway )
         findProviders( aKiway );

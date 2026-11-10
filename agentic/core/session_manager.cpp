@@ -25,6 +25,8 @@
 #include <project.h>
 #include <settings/settings_manager.h>
 
+#include <wx/utils.h>
+
 #include <algorithm>
 
 
@@ -82,14 +84,15 @@ AGENT_PROJECT& SESSION_MANAGER::Open( const fs::path& aPath, bool aForce )
     {
         if( project->Root() == proFile.parent_path() )
         {
-            m_current = project.get();
+            activate( project.get() );
             return *project;
         }
     }
 
-    auto project = std::make_unique<AGENT_PROJECT>( proFile, m_observers, aForce );
-    m_current = project.get();
+    auto           project = std::make_unique<AGENT_PROJECT>( proFile, m_observers, m_adapterFactories, aForce );
+    AGENT_PROJECT* opened = project.get();
     m_projects.push_back( std::move( project ) );
+    activate( opened );
 
     m_observers.Notify(
             [&]( SESSION_OBSERVER& aObserver )
@@ -168,7 +171,10 @@ void SESSION_MANAGER::Close( AGENT_PROJECT& aProject )
     m_projects.erase( it );
 
     if( m_current == closing.get() )
-        m_current = m_projects.empty() ? nullptr : m_projects.back().get();
+    {
+        m_current = nullptr;
+        activate( m_projects.empty() ? nullptr : m_projects.back().get() );
+    }
 }
 
 
@@ -206,7 +212,7 @@ AGENT_PROJECT& SESSION_MANAGER::Resolve( const nlohmann::json& aArgs )
 
         if( AGENT_PROJECT* project = Find( wanted ) )
         {
-            m_current = project;
+            activate( project );
             return *project;
         }
 
@@ -217,6 +223,32 @@ AGENT_PROJECT& SESSION_MANAGER::Resolve( const nlohmann::json& aArgs )
         throw TOOL_ERROR( "No project is open. Call project_open with a project folder, or project_create." );
 
     return *m_current;
+}
+
+
+void SESSION_MANAGER::AddLibraryAdapter( LIBRARY_TABLE_TYPE aType, ADAPTER_FACTORY aFactory )
+{
+    m_adapterFactories.emplace_back( aType, std::move( aFactory ) );
+}
+
+
+void SESSION_MANAGER::activate( AGENT_PROJECT* aProject )
+{
+    if( aProject == m_current && aProject )
+        return;
+
+    for( const auto& project : m_projects )
+    {
+        if( project.get() != aProject )
+            project->StopLibraryLoads();
+    }
+
+    m_current = aProject;
+
+    if( aProject )
+        wxSetEnv( PROJECT_VAR_NAME, wxString::FromUTF8( aProject->Root().string() ) );
+    else
+        wxUnsetEnv( PROJECT_VAR_NAME );
 }
 
 

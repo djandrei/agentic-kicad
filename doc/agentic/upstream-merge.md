@@ -34,10 +34,14 @@ false.
 | `pcbnew/pcbnew.cpp` | include of `agentic/pcb/pcb_agent_provider.h`; `case KIFACE_AGENT_PROVIDER` in `IfaceOrAddress` | 0 |
 | `kicad/kicad_cli.cpp` | include of `agentic/cli/command_mcp.h`; the `mcp` command in `commandStack` | 1 |
 | `kicad/kicad.cpp` | command-line switches `--classic`, `--mcp-port`, `--project`; without `--classic`, `StartAgentViewerMode()` replaces the project manager frame | 1 |
+| `eeschema/eeschema.cpp` | include of `agentic/sch/sch_agent_provider.h`; `case KIFACE_AGENT_PROVIDER` in `IfaceOrAddress` (11 lines) | 3 |
 
 `agentic/CMakeLists.txt` adds the provider sources to the kiface targets
 with `target_sources()`, so the kiface `CMakeLists.txt` files are not
-edited.
+edited. The kiface object libraries get `agentic_core` as an `INTERFACE`
+link, so their own objects keep upstream's compile flags while the kiface
+modules, and the upstream tests that link the object libraries, get the
+fork's core.
 
 ## Build notes
 

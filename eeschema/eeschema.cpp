@@ -96,6 +96,10 @@
 
 #include <wx/crt.h>
 
+#ifdef KICAD_AGENTIC
+#include <agentic/sch/sch_agent_provider.h>
+#endif
+
 // The main sheet of the project
 SCH_SHEET*  g_RootSheet = nullptr;
 
@@ -766,6 +770,13 @@ static struct IFACE : public KIFACE_BASE, public UNITS_PROVIDER
 
         case KIFACE_ATTACH_DIFF_CANVASES:
             return KifaceServiceAddress<KIFACE_ATTACH_DIFF_CANVASES_SERVICE>( &eeschemaAttachDiffCanvasesExport );
+
+#ifdef KICAD_AGENTIC
+            // clang-format off
+        case KIFACE_AGENT_PROVIDER:
+            return SchAgentProvider();
+            // clang-format on
+#endif
         }
 
         return nullptr;
