@@ -105,11 +105,14 @@ namespace
             m_canvas->Bind( wxEVT_MIDDLE_DOWN, touched );
             m_canvas->Bind( wxEVT_RIGHT_DOWN, touched );
 
-            m_highlightTimer.Bind( wxEVT_TIMER,
-                                   [this]( wxTimerEvent& )
-                                   {
-                                       clearHighlight();
-                                   } );
+            // An owned timer sends its events to the owner.
+            Bind(
+                    wxEVT_TIMER,
+                    [this]( wxTimerEvent& )
+                    {
+                        clearHighlight();
+                    },
+                    m_highlightTimer.GetId() );
 
             attach();
         }
