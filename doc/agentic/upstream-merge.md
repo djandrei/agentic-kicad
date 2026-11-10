@@ -35,6 +35,7 @@ false.
 | `kicad/kicad_cli.cpp` | include of `agentic/cli/command_mcp.h`; the `mcp` command in `commandStack` | 1 |
 | `kicad/kicad.cpp` | command-line switches `--classic`, `--mcp-port`, `--project`; without `--classic`, `StartAgentViewerMode()` replaces the project manager frame | 1 |
 | `eeschema/eeschema.cpp` | include of `agentic/sch/sch_agent_provider.h`; `case KIFACE_AGENT_PROVIDER` in `IfaceOrAddress` (11 lines) | 3 |
+| `gerbview/gerbview.cpp` | include of `agentic/gerb/gerber_agent_provider.h` and `kiface_ids.h`; `IfaceOrAddress` returns `GerbviewAgentProvider()` for `KIFACE_AGENT_PROVIDER` (13 lines) | 11 |
 
 `agentic/CMakeLists.txt` adds the provider sources to the kiface targets
 with `target_sources()`, so the kiface `CMakeLists.txt` files are not

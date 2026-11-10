@@ -47,6 +47,11 @@
 #include <dialogs/panel_toolbar_customization.h>
 #include <toolbars_gerber.h>
 
+#ifdef KICAD_AGENTIC
+#include <agentic/gerb/gerber_agent_provider.h>
+#include <kiface_ids.h>
+#endif
+
 using json = nlohmann::json;
 
 
@@ -126,7 +131,15 @@ static struct IFACE : public KIFACE_BASE, public UNITS_PROVIDER
      * @param aDataId identifies which object you want the address of.
      * @return the object requested and must be cast into the know type.
      */
-    void* IfaceOrAddress( int aDataId ) override { return nullptr; }
+    void* IfaceOrAddress( int aDataId ) override
+    {
+#ifdef KICAD_AGENTIC
+        if( aDataId == KIFACE_AGENT_PROVIDER )
+            return GerbviewAgentProvider();
+#endif
+
+        return nullptr;
+    }
 
     /**
      * Saving a file under a different name is delegated to the various KIFACEs because

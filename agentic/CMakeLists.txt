@@ -24,6 +24,10 @@ set_property( SOURCE ${CMAKE_SOURCE_DIR}/eeschema/eeschema.cpp
               DIRECTORY ${CMAKE_SOURCE_DIR}/eeschema
               APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
 
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/gerbview/gerbview.cpp
+              DIRECTORY ${CMAKE_SOURCE_DIR}/gerbview
+              APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
+
 # Protocol and transports: no wx dependency.
 add_library( agentic_protocol STATIC
     protocol/json_rpc.cpp
@@ -141,7 +145,14 @@ set( AGENTIC_SCH_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sym_viewer.cpp
 )
 
+set( AGENTIC_GERB_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/gerb/gerber_agent_provider.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gerb/gerber_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gerb/gerber_viewer.cpp
+)
+
 target_sources( pcbnew_kiface_objects PRIVATE ${AGENTIC_PCB_SOURCES} )
+target_sources( gerbview_kiface_objects PRIVATE ${AGENTIC_GERB_SOURCES} )
 target_sources( eeschema_kiface_objects PRIVATE ${AGENTIC_SCH_SOURCES} )
 
 set_property( SOURCE ${CMAKE_SOURCE_DIR}/pcbnew/pcbnew.cpp ${AGENTIC_PCB_SOURCES}
@@ -152,8 +163,13 @@ set_property( SOURCE ${CMAKE_SOURCE_DIR}/eeschema/eeschema.cpp ${AGENTIC_SCH_SOU
               DIRECTORY ${CMAKE_SOURCE_DIR}/eeschema
               APPEND PROPERTY INCLUDE_DIRECTORIES ${AGENTIC_INCLUDE_ROOT} )
 
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/gerbview/gerbview.cpp ${AGENTIC_GERB_SOURCES}
+              DIRECTORY ${CMAKE_SOURCE_DIR}/gerbview
+              APPEND PROPERTY INCLUDE_DIRECTORIES ${AGENTIC_INCLUDE_ROOT} )
+
 # The provider sources call the fork's core.  INTERFACE, so the kiface's own objects keep
 # their upstream compile flags; the kiface modules and the tests that link the object
 # libraries get agentic_core.
 target_link_libraries( pcbnew_kiface_objects INTERFACE agentic_ui agentic_core )
 target_link_libraries( eeschema_kiface_objects INTERFACE agentic_ui agentic_core )
+target_link_libraries( gerbview_kiface_objects INTERFACE agentic_ui agentic_core )
