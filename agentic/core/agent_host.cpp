@@ -335,11 +335,16 @@ void AGENT_HOST::registerCoreTools()
                                                  { "current", project == m_sessions.Current() } } );
                        }
 
-                       return TOOL_RESULT::Data( JSON{ { "mode", m_mode == MODE::VIEWER ? "viewer" : "headless" },
-                                                       { "paused", m_paused },
-                                                       { "projects", projects },
-                                                       { "client", m_server->ClientName() },
-                                                       { "providers", providers } } );
+                       JSON out{ { "mode", m_mode == MODE::VIEWER ? "viewer" : "headless" },
+                                 { "paused", m_paused },
+                                 { "projects", projects },
+                                 { "client", m_server->ClientName() },
+                                 { "providers", providers } };
+
+                       for( const auto& [name, status] : m_services.Status() )
+                           out[name] = status();
+
+                       return TOOL_RESULT::Data( out );
                    } } );
 }
 

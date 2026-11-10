@@ -95,6 +95,14 @@ public:
 
     const std::map<std::string, CODE_LIST>& ErrorCodes() const { return m_errorCodes; }
 
+    /// A program's part of the status tool's answer (e.g. the simulator's engine), under \a aName.
+    void AddStatus( const std::string& aName, std::function<nlohmann::json()> aStatus )
+    {
+        m_status[aName] = std::move( aStatus );
+    }
+
+    const std::map<std::string, std::function<nlohmann::json()>>& Status() const { return m_status; }
+
     /**
      * The schematic's netlist (KiCad s-expression format) for a project, for the PCB program
      * (D2: programs reach each other through these services).  Set by the schematic program.
@@ -128,8 +136,9 @@ private:
     CALL_MESSAGES*     m_messages = nullptr;
     PROGRESS_SINK      m_progressSink;
 
-    std::map<std::string, CODE_LIST> m_errorCodes;
-    NETLIST_SOURCE                   m_netlistSource;
+    std::map<std::string, CODE_LIST>                       m_errorCodes;
+    std::map<std::string, std::function<nlohmann::json()>> m_status;
+    NETLIST_SOURCE                                         m_netlistSource;
 
     std::function<bool()>       m_isPaused;
     std::function<void( bool )> m_setPaused;
