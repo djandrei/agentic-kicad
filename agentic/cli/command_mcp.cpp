@@ -28,6 +28,7 @@
 
 #include <atomic>
 #include <csignal>
+#include <filesystem>
 #include <cstdio>
 #include <thread>
 
@@ -110,6 +111,21 @@ int CLI::MCP_COMMAND::doPerform( KIWAY& aKiway )
 
     AGENTIC::MAIN_QUEUE queue;
     AGENTIC::AGENT_HOST host( AGENTIC::AGENT_HOST::MODE::HEADLESS, &aKiway, queue.Executor() );
+
+    const std::string project = m_argParser.get<std::string>( ARG_PROJECT );
+
+    if( !project.empty() )
+    {
+        try
+        {
+            host.Sessions().Open( std::filesystem::path( project ), false );
+        }
+        catch( const std::exception& e )
+        {
+            wxFprintf( stderr, _( "Cannot open the project %s: %s\n" ), project, e.what() );
+            return EXIT_CODES::ERR_INVALID_INPUT_FILE;
+        }
+    }
 
     g_mcpExitRequested.store( false );
     auto oldSigInt = std::signal( SIGINT, mcpSignalHandler );

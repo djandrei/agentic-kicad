@@ -22,6 +22,13 @@
 
 #include <wx/string.h>
 
+namespace AGENTIC
+{
+class AGENT_PROJECT;
+class AGENT_SERVICES;
+class AGENT_VIEWER;
+} // namespace AGENTIC
+
 /**
  * The agent-facing part of one kiface: its tools, document sessions and viewer.
  *
@@ -29,7 +36,9 @@
  * from KIFACE::IfaceOrAddress( KIFACE_AGENT_PROVIDER ).  The core reaches every program
  * only through this interface, so no kiface links against another one.
  *
- * The object is owned by the kiface and lives as long as the kiface is loaded.
+ * The object is owned by the kiface and lives as long as the kiface is loaded.  Objects
+ * passed between the host and a provider are used through virtual methods or plain data,
+ * never through dynamic_cast, since each module has its own copy of the fork's code.
  */
 class AGENT_PROVIDER
 {
@@ -38,6 +47,21 @@ public:
 
     /// Short stable name of the program, e.g. "pcb" or "sch".  Used as the tool group name.
     virtual wxString Name() const = 0;
+
+    /// Human name for the hub button and the viewer title, e.g. "PCB".
+    virtual wxString Title() const { return Name(); }
+
+    /// Add the program's tools, resources and prompts.  Called once, on the main thread.
+    virtual void Register( AGENTIC::AGENT_SERVICES& aServices ) {}
+
+    /**
+     * Create the program's viewer for \a aProject (viewer mode only), a top-level window
+     * that observes the project's sessions.  nullptr when the program has no viewer.
+     */
+    virtual AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject )
+    {
+        return nullptr;
+    }
 };
 
 #endif // AGENTIC_PROVIDER_H

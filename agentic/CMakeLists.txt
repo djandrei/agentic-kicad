@@ -42,8 +42,18 @@ target_link_libraries( agentic_protocol PUBLIC
 # Core: agent host, sessions.  Linked into kicad and kicad-cli.
 add_library( agentic_core STATIC
     core/agent_host.cpp
+    core/agent_project.cpp
     core/agentic_version.cpp
+    core/core_tools.cpp
+    core/doc_session.cpp
+    core/file_history.cpp
+    core/file_store.cpp
+    core/handles.cpp
     core/main_queue.cpp
+    core/message_log.cpp
+    core/progress.cpp
+    core/services.cpp
+    core/session_manager.cpp
 )
 
 target_include_directories( agentic_core PUBLIC
@@ -56,6 +66,8 @@ target_compile_definitions( agentic_core PRIVATE KICAD_AGENTIC )
 target_link_libraries( agentic_core PUBLIC
     agentic_protocol
     kicommon
+    kiplatform
+    picosha2
     ${wxWidgets_LIBRARIES}
 )
 

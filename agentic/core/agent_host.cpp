@@ -19,12 +19,17 @@
 
 #include <agentic/core/agent_host.h>
 #include <agentic/core/agentic_version.h>
+#include <agentic/core/core_tools.h>
+#include <agentic/core/message_log.h>
 #include <agentic/core/provider.h>
 
 #include <build_version.h>
 #include <kiface_ids.h>
 #include <kiway.h>
 #include <ki_exception.h>
+
+#include <chrono>
+#include <set>
 
 
 namespace AGENTIC
@@ -40,7 +45,9 @@ namespace
 
 
 AGENT_HOST::AGENT_HOST( MODE aMode, KIWAY* aKiway, EXECUTOR aExecutor ) :
-        m_mode( aMode )
+        m_mode( aMode ),
+        m_sessions( m_observers ),
+        m_services( m_tools, m_resources, m_prompts, m_sessions, m_observers, aMode == MODE::VIEWER )
 {
     m_server = std::make_unique<MCP_SERVER>( SERVER_INFO{ ServerName(), ServerVersion(), Instructions() }, m_tools,
                                              m_resources, m_prompts, std::move( aExecutor ) );
@@ -55,32 +62,178 @@ AGENT_HOST::AGENT_HOST( MODE aMode, KIWAY* aKiway, EXECUTOR aExecutor ) :
                 return std::nullopt;
             } );
 
+    m_server->SetToolWrapper(
+            [this]( const std::string& aName, const JSON& aArgs, TOOL_CONTEXT&,
+                    const std::function<TOOL_RESULT()>& aRun )
+            {
+                return runTool( aName, aArgs, aRun );
+            } );
+
+    m_services.SetPauseControl(
+            [this]()
+            {
+                return m_paused;
+            },
+            [this]( bool aPaused )
+            {
+                SetPaused( aPaused );
+            } );
+
     registerCoreTools();
+    RegisterProjectTools( m_services );
 
     if( aKiway )
         findProviders( aKiway );
 }
 
 
-AGENT_HOST::~AGENT_HOST() = default;
+AGENT_HOST::~AGENT_HOST()
+{
+    // Close the projects (and their sessions) while the providers' code is still loaded.
+    for( AGENT_PROJECT* project : m_sessions.Projects() )
+        m_sessions.Close( *project );
+}
 
 
 void AGENT_HOST::SetPaused( bool aPaused )
 {
+    if( m_paused == aPaused )
+        return;
+
     m_paused = aPaused;
+
+    m_observers.Notify(
+            [&]( SESSION_OBSERVER& aObserver )
+            {
+                aObserver.OnPauseChanged( aPaused );
+            } );
+}
+
+
+void AGENT_HOST::AddProvider( AGENT_PROVIDER* aProvider, const std::string& aFace )
+{
+    m_providers.push_back( PROVIDER_INFO{ aFace, aProvider, "" } );
+    aProvider->Register( m_services );
+}
+
+
+AGENT_PROVIDER* AGENT_HOST::ProviderForGroup( const std::string& aGroup ) const
+{
+    for( const PROVIDER_INFO& info : m_providers )
+    {
+        if( info.provider && info.provider->Name().ToStdString() == aGroup )
+            return info.provider;
+    }
+
+    return nullptr;
+}
+
+
+TOOL_RESULT AGENT_HOST::runTool( const std::string& aName, const JSON& aArgs, const std::function<TOOL_RESULT()>& aRun )
+{
+    const TOOL_DEF* tool = m_tools.Find( aName );
+
+    if( tool && m_providerUse )
+    {
+        if( AGENT_PROVIDER* provider = ProviderForGroup( tool->group ) )
+            m_providerUse( *provider );
+    }
+
+    m_observers.Notify(
+            [&]( SESSION_OBSERVER& aObserver )
+            {
+                aObserver.OnToolStart( aName, aArgs );
+            } );
+
+    const auto    started = std::chrono::steady_clock::now();
+    CALL_MESSAGES messages( aName );
+    TOOL_RESULT   result;
+
+    m_services.SetMessages( &messages );
+    result = aRun();
+    m_services.SetMessages( nullptr );
+
+    // The current project's settings choose the visible tool groups.
+    if( AGENT_PROJECT* current = m_sessions.Current() )
+    {
+        std::set<std::string> disabled;
+
+        for( const JSON& group : current->Settings().value( "disabledGroups", JSON::array() ) )
+        {
+            if( group.is_string() && group.get<std::string>() != "project" )
+                disabled.insert( group.get<std::string>() );
+        }
+
+        if( disabled != m_server->DisabledGroups() )
+            m_server->SetDisabledGroups( disabled );
+    }
+
+    // The call's messages go to the log of the project it used and back to the agent (D11).
+    AGENT_PROJECT* project = m_sessions.Current();
+    JSON           records = messages.Flush( project ? project->Log() : m_hostLog );
+
+    if( !records.empty() )
+    {
+        if( result.isError )
+        {
+            std::string text = "\nKiCad reported:";
+
+            for( const JSON& record : records )
+                text += "\n  " + record["severity"].get<std::string>() + ": " + record["text"].get<std::string>();
+
+            result.content.push_back( TextContent( text ) );
+
+            if( result.structuredContent.is_object() )
+                result.structuredContent["messages"] = records;
+        }
+        else if( result.structuredContent.is_object() )
+        {
+            JSON structured = result.structuredContent;
+            structured["messages"] = records;
+            result = TOOL_RESULT::Data( structured );
+        }
+    }
+
+    const double millis =
+            std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - started ).count();
+
+    std::string summary;
+
+    if( result.isError && !result.content.empty() && result.content[0].contains( "text" ) )
+        summary = result.content[0]["text"].get<std::string>();
+
+    // The call itself is a record too, so log_get shows what ran (after the call's own
+    // records, which the result already carries).
+    if( project && aName != "log_get" )
+    {
+        LOG_RECORD call;
+        call.severity = "call";
+        call.tool = aName;
+        call.text = aName + ( result.isError ? " failed" : " ok" ) + ( summary.empty() ? "" : ": " + summary );
+        project->Log().Add( call );
+    }
+
+    m_observers.Notify(
+            [&]( SESSION_OBSERVER& aObserver )
+            {
+                aObserver.OnToolEnd( aName, aArgs, !result.isError, millis, summary );
+            } );
+
+    return result;
 }
 
 
 std::string AGENT_HOST::Instructions()
 {
     return "This server drives KiCad, the electronics design suite. A project is a folder with a "
-           ".kicad_pro file. Every KiCad program has a tool group: schematic (sch_*), symbol editor "
-           "(sym_*), PCB (pcb_*), footprint editor (fp_*), 3D (view3d_*), simulator (sim_*), Gerber "
-           "viewer (gerber_*), drawing sheets (ds_*), calculator (calc_*) and footprint assignment "
-           "(cvpcb_*). Lengths are millimetres, angles degrees, Y points down. Changes are made "
-           "through structured tools, never by writing KiCad files; each change is saved at once "
-           "and can be undone with 'undo'. Start with 'status' and 'project_open'. Check your "
-           "work with ERC/DRC and captures before moving on.";
+           ".kicad_pro file: open one with 'project_open' or make one with 'project_create'. Each KiCad "
+           "program available adds a tool group named by its prefix (sch_ for the schematic, pcb_ for "
+           "the board, and so on); 'status' lists the programs this server has. Lengths are "
+           "millimetres (or strings with units such as \"50mil\"), angles degrees, Y points down. "
+           "Change designs only through the structured tools, never by writing KiCad files; every "
+           "change is saved at once and 'undo' takes back the last one. Project files that are not "
+           "design files (notes, scripts) are read and written with the file_ tools. Check your work "
+           "(ERC, DRC, captures) before moving on.";
 }
 
 
@@ -114,6 +267,9 @@ void AGENT_HOST::findProviders( KIWAY* aKiway )
         }
 
         m_providers.push_back( info );
+
+        if( info.provider )
+            info.provider->Register( m_services );
     }
 }
 
@@ -131,7 +287,7 @@ void AGENT_HOST::registerCoreTools()
 
     m_tools.Add( { "status",
                    "State of the server: mode (headless or viewer), whether the person watching paused "
-                   "the agent, the connected client and the KiCad programs available.",
+                   "the agent, the open projects, the connected client and the KiCad programs available.",
                    "project", EMPTY_OBJECT_SCHEMA, [this]( const JSON&, TOOL_CONTEXT& )
                    {
                        JSON providers = JSON::array();
@@ -149,8 +305,18 @@ void AGENT_HOST::registerCoreTools()
                            providers.push_back( entry );
                        }
 
+                       JSON projects = JSON::array();
+
+                       for( AGENT_PROJECT* project : m_sessions.Projects() )
+                       {
+                           projects.push_back( { { "name", project->Name() },
+                                                 { "root", project->Root().string() },
+                                                 { "current", project == m_sessions.Current() } } );
+                       }
+
                        return TOOL_RESULT::Data( JSON{ { "mode", m_mode == MODE::VIEWER ? "viewer" : "headless" },
                                                        { "paused", m_paused },
+                                                       { "projects", projects },
                                                        { "client", m_server->ClientName() },
                                                        { "providers", providers } } );
                    } } );

@@ -112,6 +112,15 @@ public:
     void SetToolStart( TOOL_START aStart ) { m_start = std::move( aStart ); }
 
     /**
+     * Wraps every tool run that passed the gate (executor thread): the host captures the
+     * call's messages around \a aRun and adds them to the result.  \a aRun never throws.
+     */
+    using TOOL_WRAPPER = std::function<TOOL_RESULT( const std::string& aName, const JSON& aArgs, TOOL_CONTEXT& aContext,
+                                                    const std::function<TOOL_RESULT()>& aRun )>;
+
+    void SetToolWrapper( TOOL_WRAPPER aWrapper ) { m_wrapper = std::move( aWrapper ); }
+
+    /**
      * Hide the tools of these groups from tools/list and refuse calls to them.  Executor
      * thread.  Sends notifications/tools/list_changed when the set changes.
      */
@@ -147,6 +156,7 @@ private:
     TOOL_OBSERVER m_observer;
     TOOL_GATE     m_gate;
     TOOL_START    m_start;
+    TOOL_WRAPPER  m_wrapper;
 
     // Executor-thread state
     bool                  m_initialized = false;

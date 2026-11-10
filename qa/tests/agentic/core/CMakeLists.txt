@@ -5,6 +5,7 @@ add_executable( qa_agentic_core
     test_mcp_server.cpp
     test_transports.cpp
     test_agent_host.cpp
+    test_stage2.cpp
 )
 
 target_include_directories( qa_agentic_core PRIVATE

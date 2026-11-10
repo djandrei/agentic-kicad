@@ -27,10 +27,17 @@
 
 bool init_unit_test()
 {
+    KI_TEST::SetMockConfigDir();
     SetPgm( new MOCK_PGM_BASE() );
     KIPLATFORM::APP::Init();
     boost::unit_test::framework::master_test_suite().p_name.value = "Agentic core tests";
-    return wxInitialize();
+
+    if( !wxInitialize() )
+        return false;
+
+    // Projects are opened through the settings manager (stage 2).
+    Pgm().InitPgm( true, true );
+    return true;
 }
 
 

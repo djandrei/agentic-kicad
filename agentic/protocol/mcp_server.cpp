@@ -401,13 +401,25 @@ JSON MCP_SERVER::onToolsCall( const JSON& aParams, const std::shared_ptr<REQUEST
 
         TOOL_CONTEXT context( aState );
 
+        auto run = [&]() -> TOOL_RESULT
+        {
+            try
+            {
+                return tool->handler( args, context );
+            }
+            catch( const TOOL_ERROR& e )
+            {
+                return TOOL_RESULT::Error( e.what(), e.Data() );
+            }
+            catch( const std::exception& e )
+            {
+                return TOOL_RESULT::Error( std::string( "Tool '" ) + name + "' failed: " + e.what() );
+            }
+        };
+
         try
         {
-            result = tool->handler( args, context );
-        }
-        catch( const TOOL_ERROR& e )
-        {
-            result = TOOL_RESULT::Error( e.what(), e.Data() );
+            result = m_wrapper ? m_wrapper( name, args, context, run ) : run();
         }
         catch( const std::exception& e )
         {
