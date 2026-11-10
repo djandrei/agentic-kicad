@@ -45,8 +45,13 @@ jobs:
       - name: Build
         run: ninja -C build/agentic
 
+      # The timings (qa_agentic_perf) are recorded on the development machine and checked by
+      # tools/agentic/stage-gate.sh there; a CI runner's speed differs.
       - name: Agentic tests
-        run: xvfb-run -a ctest --test-dir build/agentic -R '^qa_agentic' --output-on-failure
+        run: xvfb-run -a ctest --test-dir build/agentic -R '^qa_agentic' -E '^qa_agentic_perf$' --output-on-failure
+
+      - name: Tool reference is current
+        run: KICAD_CLI=build/agentic/kicad/kicad-cli python3 tools/agentic/gen-tool-reference.py --check
 
       - name: ccache statistics
         if: always()

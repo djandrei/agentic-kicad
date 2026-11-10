@@ -85,6 +85,9 @@ if [[ "${OFF_BUILD}" == 1 ]]; then
     ninja -C "${BUILD_OFF}" -j "${JOBS}"
 fi
 
+step "tool reference (doc/agentic/tools.md) is current"
+KICAD_CLI="${BUILD_ON}/kicad/kicad-cli" python3 "${ROOT}/tools/agentic/gen-tool-reference.py" --check
+
 step "formatting of fork commits"
 BASE="$( git -C "${ROOT}" merge-base HEAD master )"
 "${ROOT}/tools/check_coding.sh" --diff --ci --commit "${BASE}" || {
