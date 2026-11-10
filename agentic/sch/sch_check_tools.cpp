@@ -108,13 +108,9 @@ namespace
     /// (ERC's library checks call PROJECT_SCH::SymbolLibAdapter).
     void activateGlobalSymbolLibraries( AGENT_PROJECT& aProject )
     {
-        LIBRARY_MANAGER& manager = Pgm().GetLibraryManager();
-        manager.AbortAsyncLoads();
-        manager.LoadProjectTables( wx( aProject.Root().string() ), { LIBRARY_TABLE_TYPE::SYMBOL } );
-
-        SYMBOL_LIBRARY_ADAPTER* adapter = PROJECT_SCH::SymbolLibAdapter( &aProject.KicadProject() );
-        adapter->AsyncLoad();
-        adapter->BlockUntilLoaded();
+        // The adapter must exist before the tables load into it.
+        PROJECT_SCH::SymbolLibAdapter( &aProject.KicadProject() );
+        aProject.ActivateGlobalLibraryTables( LIBRARY_TABLE_TYPE::SYMBOL );
     }
 
 
@@ -239,6 +235,23 @@ namespace
     }
 
 } // namespace
+
+
+std::string SchNetlist( AGENT_PROJECT& aProject )
+{
+    SCH_DOC_SESSION& s = SchematicSession( aProject );
+    const fs::path   file = aProject.Root() / ".agentic" / "netlist.net";
+    fs::create_directories( file.parent_path() );
+
+    NETLIST_EXPORTER_KICAD exporter( &s.Schematic(), nullptr );
+
+    if( !exporter.WriteNetlist( wx( file.string() ), 0, NULL_REPORTER::GetInstance() ) )
+        throw TOOL_ERROR( "Writing the schematic netlist failed." );
+
+    std::string text = FILE_STORE::ReadFile( file );
+    fs::remove( file );
+    return text;
+}
 
 
 void RegisterSchCheckTools( AGENT_SERVICES& aServices )

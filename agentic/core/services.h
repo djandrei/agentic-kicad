@@ -95,6 +95,23 @@ public:
 
     const std::map<std::string, CODE_LIST>& ErrorCodes() const { return m_errorCodes; }
 
+    /**
+     * The schematic's netlist (KiCad s-expression format) for a project, for the PCB program
+     * (D2: programs reach each other through these services).  Set by the schematic program.
+     */
+    using NETLIST_SOURCE = std::function<std::string( AGENT_PROJECT& )>;
+
+    void SetNetlistSource( NETLIST_SOURCE aSource ) { m_netlistSource = std::move( aSource ); }
+
+    /// @throw TOOL_ERROR when no schematic program is loaded.
+    std::string Netlist( AGENT_PROJECT& aProject ) const
+    {
+        if( !m_netlistSource )
+            throw TOOL_ERROR( "No schematic program in this server provides a netlist (see status)." );
+
+        return m_netlistSource( aProject );
+    }
+
     void SetPauseControl( std::function<bool()> aIsPaused, std::function<void( bool )> aSetPaused )
     {
         m_isPaused = std::move( aIsPaused );
@@ -112,6 +129,7 @@ private:
     PROGRESS_SINK      m_progressSink;
 
     std::map<std::string, CODE_LIST> m_errorCodes;
+    NETLIST_SOURCE                   m_netlistSource;
 
     std::function<bool()>       m_isPaused;
     std::function<void( bool )> m_setPaused;

@@ -21,6 +21,7 @@
 #include <agentic/core/core_tools.h>
 #include <agentic/core/handles.h>
 #include <agentic/core/services.h>
+#include <agentic/protocol/schema.h>
 
 #include <base_units.h>
 #include <netclass.h>
@@ -539,6 +540,92 @@ void RegisterProjectTools( AGENT_SERVICES& aServices )
 
                      return TOOL_RESULT::Data( result );
                  } } );
+
+    // Batches (S0.c: a save after every call is seconds on the largest boards) ---------------
+
+    tools.Add(
+            { "batch",
+              "Run several changing calls as one: each {tool, arguments} runs in order, then the documents are "
+              "saved once and the whole batch is one undo step. If any call fails, none of the batch's changes "
+              "are kept. Use it for many small edits on a large board or schematic.",
+              "project",
+              ProjectToolSchema(
+                      { { "calls",
+                          { { "type", "array" },
+                            { "minItems", 1 },
+                            { "maxItems", 500 },
+                            { "items",
+                              { { "type", "object" },
+                                { "properties",
+                                  { { "tool", { { "type", "string" } } }, { "arguments", { { "type", "object" } } } } },
+                                { "required", { "tool" } } } } } },
+                        { "force", forceArg } },
+                      { "calls" } ),
+              [&tools, &sessions]( const JSON& aArgs, TOOL_CONTEXT& aContext )
+              {
+                  AGENT_PROJECT& project = sessions.Resolve( aArgs );
+                  JSON           results = JSON::array();
+
+                  JSON out = project.Mutate(
+                          "batch", aArgs.value( "force", false ),
+                          [&]() -> JSON
+                          {
+                              for( const JSON& call : aArgs["calls"] )
+                              {
+                                  const std::string name = call["tool"];
+                                  const TOOL_DEF*   tool = tools.Find( name );
+
+                                  if( !tool || tool->group == "project" || tool->group == "debug"
+                                      || tool->group == "docs" )
+                                      throw TOOL_ERROR( "batch runs program tools (sch_, pcb_, sym_, ...); '" + name
+                                                        + "' cannot be batched." );
+
+                                  JSON args = call.value( "arguments", JSON::object() );
+
+                                  // Calls act on the batch's project.
+                                  args["project"] = project.Root().string();
+
+                                  if( std::optional<std::string> error = SCHEMA::Validate( tool->inputSchema, args ) )
+                                      throw TOOL_ERROR( "Call " + std::to_string( results.size() + 1 ) + " (" + name
+                                                        + "): invalid arguments: " + *error );
+
+                                  TOOL_RESULT result;
+
+                                  try
+                                  {
+                                      result = tool->handler( args, aContext );
+                                  }
+                                  catch( const TOOL_ERROR& e )
+                                  {
+                                      throw TOOL_ERROR( "Call " + std::to_string( results.size() + 1 ) + " (" + name
+                                                                + ") failed, so the batch was undone: " + e.what(),
+                                                        e.Data() );
+                                  }
+
+                                  if( result.isError )
+                                  {
+                                      std::string text =
+                                              result.content.empty() ? "" : result.content[0].value( "text", "" );
+                                      throw TOOL_ERROR( "Call " + std::to_string( results.size() + 1 ) + " (" + name
+                                                        + ") failed, so the batch was undone: " + text );
+                                  }
+
+                                  JSON entry{ { "tool", name } };
+
+                                  if( !result.structuredContent.is_null() )
+                                      entry["result"] = result.structuredContent;
+
+                                  results.push_back( entry );
+
+                                  if( aContext.IsCancelled() )
+                                      throw TOOL_ERROR( "Cancelled; the batch was undone." );
+                              }
+
+                              return JSON{ { "results", results } };
+                          } );
+
+                  return TOOL_RESULT::Data( out );
+              } } );
 
     // Project settings -----------------------------------------------------------------------
 

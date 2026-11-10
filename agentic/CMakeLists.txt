@@ -110,8 +110,13 @@ target_link_libraries( kicad agentic_ui )
 # file and the provider sources only, not to the whole kiface target, for the same ccache
 # reason as KICAD_AGENTIC above.
 set( AGENTIC_PCB_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/board_doc_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_agent_provider.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_check_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_items.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_library_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_viewer.cpp
 )
 
 set( AGENTIC_SCH_SOURCES

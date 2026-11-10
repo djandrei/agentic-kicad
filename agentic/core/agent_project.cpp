@@ -157,6 +157,20 @@ void AGENT_PROJECT::StopLibraryLoads()
 }
 
 
+void AGENT_PROJECT::ActivateGlobalLibraryTables( LIBRARY_TABLE_TYPE aType )
+{
+    LIBRARY_MANAGER& manager = Pgm().GetLibraryManager();
+    manager.AbortAsyncLoads();
+    manager.LoadProjectTables( wxString::FromUTF8( Root().string() ), { aType } );
+
+    if( std::optional<LIBRARY_MANAGER_ADAPTER*> adapter = manager.Adapter( aType ) )
+    {
+        ( *adapter )->AsyncLoad();
+        ( *adapter )->BlockUntilLoaded();
+    }
+}
+
+
 bool AGENT_PROJECT::IsInsideProject( const wxString& aUri )
 {
     const wxString  expanded = LIBRARY_MANAGER::ExpandURI( aUri, *m_project );

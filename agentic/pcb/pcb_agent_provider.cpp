@@ -23,6 +23,8 @@
 #include <agentic/core/services.h>
 #include <agentic/pcb/pcb_agent_provider.h>
 #include <agentic/pcb/pcb_library_tools.h>
+#include <agentic/pcb/pcb_tools.h>
+#include <agentic/pcb/pcb_viewer.h>
 
 #include <drc/drc_item.h>
 #include <footprint_library_adapter.h>
@@ -52,6 +54,13 @@ public:
                                  } );
 
         AGENTIC::RegisterFootprintLibraryTools( aServices );
+        AGENTIC::RegisterPcbEditTools( aServices );
+        AGENTIC::RegisterPcbCheckTools( aServices );
+    }
+
+    AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject ) override
+    {
+        return AGENTIC::CreatePcbViewer( aServices, aProject );
     }
 };
 

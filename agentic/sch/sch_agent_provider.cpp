@@ -75,6 +75,12 @@ public:
                                      return AGENTIC::RcItemsJson( ERC_ITEM::GetItemsWithSeverities() );
                                  } );
 
+        aServices.SetNetlistSource(
+                []( AGENTIC::AGENT_PROJECT& aProject )
+                {
+                    return AGENTIC::SchNetlist( aProject );
+                } );
+
         AGENTIC::RegisterSymbolLibraryTools( aServices );
         AGENTIC::RegisterSchEditTools( aServices );
         AGENTIC::RegisterSchCheckTools( aServices );

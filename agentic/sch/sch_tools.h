@@ -37,6 +37,9 @@ class AGENT_PROJECT;
 class AGENT_SERVICES;
 class SCH_DOC_SESSION;
 
+/// The project's schematic netlist in KiCad's s-expression format (for the PCB program).
+std::string SchNetlist( AGENT_PROJECT& aProject );
+
 /// Queries, placement, editing and wiring (stage 4.1 to 4.3), group "sch".
 void RegisterSchEditTools( AGENT_SERVICES& aServices );
 

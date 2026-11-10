@@ -102,6 +102,14 @@ public:
     /// Stop background library loads (another project becomes current, see SESSION_MANAGER).
     void StopLibraryLoads();
 
+    /**
+     * Load this project's tables of \a aType into KiCad's process-wide library manager, for
+     * engine code that reads libraries through it (ERC's library checks, the netlist updater's
+     * footprint loads, DRC's library checks).  The process-wide manager serves one project at
+     * a time; the current project is the one that needs it.
+     */
+    void ActivateGlobalLibraryTables( LIBRARY_TABLE_TYPE aType );
+
     /// True when a library URI resolves inside the project folder (the agent may change it).
     bool IsInsideProject( const wxString& aUri );
 
