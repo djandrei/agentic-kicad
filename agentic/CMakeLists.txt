@@ -115,8 +115,10 @@ set( AGENTIC_PCB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_check_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_items.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_library_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_route_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_viewer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pns_agent_iface.cpp
 )
 
 set( AGENTIC_SCH_SOURCES
