@@ -25,6 +25,11 @@
 #include "pcb_calculator_frame.h"
 #include "pcb_calculator_settings.h"
 
+#ifdef KICAD_AGENTIC
+#include <agentic/calc/calc_agent_provider.h>
+#include <kiface_ids.h>
+#endif
+
 // Pcb_calculator data file extension:
 const wxString PcbCalcDataFileExt( wxT( "pcbcalc" ) );
 
@@ -61,6 +66,11 @@ static struct IFACE : public KIFACE_BASE
      */
     void* IfaceOrAddress( int aDataId ) override
     {
+#ifdef KICAD_AGENTIC
+        if( aDataId == KIFACE_AGENT_PROVIDER )
+            return CalculatorAgentProvider();
+#endif
+
         return nullptr;
     }
 

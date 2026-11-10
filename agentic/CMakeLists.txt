@@ -32,6 +32,10 @@ set_property( SOURCE ${CMAKE_SOURCE_DIR}/pagelayout_editor/pl_editor.cpp
               DIRECTORY ${CMAKE_SOURCE_DIR}/pagelayout_editor
               APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
 
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/pcb_calculator/pcb_calculator.cpp
+              DIRECTORY ${CMAKE_SOURCE_DIR}/pcb_calculator
+              APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
+
 # Protocol and transports: no wx dependency.
 add_library( agentic_protocol STATIC
     protocol/json_rpc.cpp
@@ -167,6 +171,22 @@ set( AGENTIC_DS_SOURCES
 )
 
 target_sources( pl_editor_kiface PRIVATE ${AGENTIC_DS_SOURCES} )
+
+# The calculator (D9): the fork's formulas, tools, viewer and the panel pin harness, in the
+# pcb_calculator kiface (also a module without an object library).
+set( AGENTIC_CALC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/calc/calc_agent_provider.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/calc/calc_formulas.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/calc/calc_pin.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/calc/calc_tools.cpp
+)
+
+target_sources( pcb_calculator_kiface PRIVATE ${AGENTIC_CALC_SOURCES} )
+target_link_libraries( pcb_calculator_kiface agentic_ui agentic_core )
+
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/pcb_calculator/pcb_calculator.cpp ${AGENTIC_CALC_SOURCES}
+              DIRECTORY ${CMAKE_SOURCE_DIR}/pcb_calculator
+              APPEND PROPERTY INCLUDE_DIRECTORIES ${AGENTIC_INCLUDE_ROOT} )
 target_link_libraries( pl_editor_kiface agentic_ui agentic_core )
 
 set_property( SOURCE ${CMAKE_SOURCE_DIR}/pagelayout_editor/pl_editor.cpp ${AGENTIC_DS_SOURCES}
