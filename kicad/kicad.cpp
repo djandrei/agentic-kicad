@@ -73,6 +73,10 @@
 
 #include <libraries/library_manager.h>
 
+#ifdef KICAD_AGENTIC
+#include <agentic/hub/agent_viewer_mode.h>
+#endif
+
 
 KIFACE_BASE& Kiface()
 {
@@ -128,6 +132,13 @@ bool PGM_KICAD::OnPgmInit()
 #ifndef __WXOSX__
         { wxCMD_LINE_SWITCH, nullptr, "software-rendering", "Use software rendering instead of OpenGL",
           wxCMD_LINE_VAL_NONE, 0 },
+#endif
+#ifdef KICAD_AGENTIC
+        { wxCMD_LINE_SWITCH, nullptr, "classic", "Start the KiCad project manager instead of agent mode",
+          wxCMD_LINE_VAL_NONE, 0 },
+        { wxCMD_LINE_OPTION, nullptr, "mcp-port", "Agent mode: MCP HTTP port on 127.0.0.1 (default: any free port)",
+          wxCMD_LINE_VAL_NUMBER, 0 },
+        { wxCMD_LINE_OPTION, nullptr, "project", "Agent mode: project folder to open", wxCMD_LINE_VAL_STRING, 0 },
 #endif
         { wxCMD_LINE_PARAM, nullptr, nullptr, "File to load", wxCMD_LINE_VAL_STRING,
           wxCMD_LINE_PARAM_MULTIPLE | wxCMD_LINE_PARAM_OPTIONAL },
@@ -294,6 +305,26 @@ bool PGM_KICAD::OnPgmInit()
         mergetoolFrame = new MERGETOOL_FRAME( &Kiway, nullptr, paths );
         frame          = mergetoolFrame;
     }
+#ifdef KICAD_AGENTIC
+    else if( appType == KICAD_MAIN_FRAME_T && !parser.Found( "classic" ) )
+    {
+        AGENTIC::AGENT_LAUNCH_OPTIONS agentOptions;
+        long                          mcpPort = 0;
+
+        if( parser.Found( "mcp-port", &mcpPort ) )
+            agentOptions.port = static_cast<int>( mcpPort );
+
+        parser.Found( "project", &agentOptions.project );
+
+        frame = AGENTIC::StartAgentViewerMode( &Kiway, agentOptions );
+
+        if( !frame )
+        {
+            OnPgmExit();
+            return false;
+        }
+    }
+#endif
     else if( appType == KICAD_MAIN_FRAME_T )
     {
         managerFrame = new KICAD_MANAGER_FRAME( nullptr, wxT( "KiCad" ), wxDefaultPosition,

@@ -111,6 +111,10 @@
 #include "cli/command_version.h"
 #include "cli/exit_codes.h"
 
+#ifdef KICAD_AGENTIC
+#include <agentic/cli/command_mcp.h>
+#endif
+
 // Add this header after all others, to avoid a collision name in a Windows header
 // on mingw.
 #include <wx/app.h>
@@ -238,6 +242,12 @@ static CLI::GERBER_INFO_COMMAND        gerberInfoCmd{};
 static CLI::GERBER_DIFF_COMMAND        gerberDiffCmd{};
 static CLI::VERSION_COMMAND            versionCmd{};
 static CLI::API_SERVER_COMMAND         apiServerCmd{};
+
+#ifdef KICAD_AGENTIC
+// clang-format off
+static CLI::MCP_COMMAND                mcpCmd{};
+// clang-format on
+#endif
 
 // clang-format off
 static std::vector<COMMAND_ENTRY> commandStack = {
@@ -416,7 +426,12 @@ static std::vector<COMMAND_ENTRY> commandStack = {
     },
     {
         &apiServerCmd,
-    }
+    },
+#ifdef KICAD_AGENTIC
+    {
+        &mcpCmd,
+    },
+#endif
 };
 // clang-format on
 

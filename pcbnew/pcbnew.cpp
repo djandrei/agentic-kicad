@@ -99,6 +99,10 @@
 
 #include <wx/crt.h>
 
+#ifdef KICAD_AGENTIC
+#include <agentic/pcb/pcb_agent_provider.h>
+#endif
+
 
 /**
  * Return the project whose footprint libraries the kiface-level footprint services work
@@ -649,6 +653,13 @@ static struct IFACE : public KIFACE_BASE, public UNITS_PROVIDER
 
         case KIFACE_ATTACH_DIFF_CANVASES:
             return KifaceServiceAddress<KIFACE_ATTACH_DIFF_CANVASES_SERVICE>( &pcbnewAttachDiffCanvasesExport );
+
+#ifdef KICAD_AGENTIC
+            // clang-format off
+        case KIFACE_AGENT_PROVIDER:
+            return PcbAgentProvider();
+            // clang-format on
+#endif
 
         default:
             return nullptr;

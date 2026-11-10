@@ -285,6 +285,10 @@ option( KICAD_BUILD_PNS_DEBUG_TOOL
     "Build the P&S debugging/playground QA tool"
     OFF )
 
+option( KICAD_AGENTIC
+    "Build the Agentic-KiCad MCP server, sessions and viewers"
+    OFF )
+
 option( KICAD_GAL_PROFILE
     "Enable profiling info for GAL"
     OFF )
@@ -1148,11 +1152,20 @@ add_subdirectory( pcb_calculator )
 add_subdirectory( plugins )             # 3D plugins must be built before kicad
 add_subdirectory( cvpcb )               # must be after pcbnew
 add_subdirectory( kicad )               # should follow pcbnew, eeschema, api
+
+if( KICAD_AGENTIC )
+    add_subdirectory( agentic )         # adds sources to the kiface, kicad and kicad-cli targets above
+endif()
+
 add_subdirectory( tools )
 add_subdirectory( utils )
 
 if( KICAD_BUILD_QA_TESTS )
     add_subdirectory( qa )
+
+    if( KICAD_AGENTIC )
+        add_subdirectory( qa/tests/agentic )
+    endif()
 endif()
 
 # Must follow every directory that defines targets

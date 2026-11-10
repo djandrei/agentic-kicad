@@ -92,7 +92,13 @@ enum KIFACE_ADDR_ID : int
     /// Function pointer type: void (*)( const wxString& aFootprint, PROJECT* aProject,
     ///                                  std::set<wxString>& aPadNumbers )
     /// Fills aPadNumbers with the numbered pads of aFootprint.
-    KIFACE_FOOTPRINT_PAD_NUMBERS
+    KIFACE_FOOTPRINT_PAD_NUMBERS,
+
+#ifdef KICAD_AGENTIC
+    /// AGENT_PROVIDER* (agentic/core/provider.h): the kiface's agent tools,
+    /// sessions and viewer.  Returns nullptr from kifaces without a provider.
+    KIFACE_AGENT_PROVIDER,
+#endif
 };
 
 #endif // KIFACE_IDS
