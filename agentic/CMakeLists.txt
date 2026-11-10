@@ -111,6 +111,9 @@ target_link_libraries( kicad agentic_ui )
 # reason as KICAD_AGENTIC above.
 set( AGENTIC_PCB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/board_doc_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/footprint_lib_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/fp_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/pcb/fp_viewer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_agent_provider.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_check_tools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pcb/pcb_items.cpp

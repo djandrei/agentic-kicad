@@ -26,6 +26,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <agentic/protocol/registry.h>
+#include <layer_ids.h>
+#include <lseq.h>
+#include <math/box2.h>
+
+class BOARD;
 class BOARD_COMMIT;
 
 namespace AGENTIC
@@ -49,6 +55,13 @@ void RegisterPcbCheckTools( AGENT_SERVICES& aServices );
 nlohmann::json PcbMutate( AGENT_PROJECT& aProject, BOARD_DOC_SESSION& aSession, const std::string& aLabel,
                           const nlohmann::json& aArgs, bool aRatsnest,
                           const std::function<nlohmann::json( BOARD_COMMIT& )>& aEdit );
+
+/**
+ * A PNG of \a aLayers of \a aBoard over \a aArea (board coordinates, on the page), at most
+ * \a aWidth pixels wide, with the scale and area as structured content.
+ */
+TOOL_RESULT PcbCapturePng( AGENT_PROJECT& aProject, BOARD& aBoard, const BOX2I& aArea, const LSEQ& aLayers,
+                           int aWidth );
 
 } // namespace AGENTIC
 

@@ -21,6 +21,8 @@
 #include <agentic/core/provider.h>
 #include <agentic/core/rc_codes.h>
 #include <agentic/core/services.h>
+#include <agentic/pcb/fp_tools.h>
+#include <agentic/pcb/fp_viewer.h>
 #include <agentic/pcb/pcb_agent_provider.h>
 #include <agentic/pcb/pcb_library_tools.h>
 #include <agentic/pcb/pcb_route_tools.h>
@@ -34,11 +36,29 @@
 namespace
 {
 
+/// The footprint editor: compiled into pcbnew, its own tool group and viewer.
+class FP_AGENT_PROVIDER : public AGENT_PROVIDER
+{
+public:
+    wxString Name() const override { return wxS( "fp" ); }
+    wxString Title() const override { return wxS( "Footprint Editor" ); }
+
+    void Register( AGENTIC::AGENT_SERVICES& aServices ) override { AGENTIC::RegisterFootprintEditorTools( aServices ); }
+
+    AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject ) override
+    {
+        return AGENTIC::CreateFpViewer( aServices, aProject );
+    }
+};
+
+
 class PCB_AGENT_PROVIDER : public AGENT_PROVIDER
 {
 public:
     wxString Name() const override { return wxS( "pcb" ); }
     wxString Title() const override { return wxS( "PCB" ); }
+
+    std::vector<AGENT_PROVIDER*> Companions() override { return { &m_footprintEditor }; }
 
     void Register( AGENTIC::AGENT_SERVICES& aServices ) override
     {
@@ -64,6 +84,9 @@ public:
     {
         return AGENTIC::CreatePcbViewer( aServices, aProject );
     }
+
+private:
+    FP_AGENT_PROVIDER m_footprintEditor;
 };
 
 } // namespace

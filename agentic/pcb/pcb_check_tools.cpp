@@ -280,6 +280,72 @@ namespace
 } // namespace
 
 
+TOOL_RESULT PcbCapturePng( AGENT_PROJECT& aProject, BOARD& aBoard, const BOX2I& aArea, const LSEQ& aLayers, int aWidth )
+{
+    const double pxPerMm = aWidth / pcbIUScale.IUTomm( aArea.GetWidth() );
+    const int    dpi = std::clamp( static_cast<int>( std::ceil( pxPerMm * 25.4 ) ), 20, 1200 );
+
+    PCB_PLOT_PARAMS opts = plotParams( PLOT_FORMAT::PNG );
+    opts.SetPngDPI( dpi );
+    opts.SetPngAntialias( true );
+    opts.SetBlackAndWhite( false );
+    opts.SetBackgroundColor( opts.ColorSettings()->GetColor( LAYER_PCB_BACKGROUND ) );
+
+    const fs::path file = aProject.Root() / ".agentic" / "captures" / "board.png";
+    fs::create_directories( file.parent_path() );
+
+    std::unique_ptr<PLOTTER> plotter( StartPlotBoard( &aBoard, &opts, aLayers.front(), wxS( "capture" ),
+                                                      wx( file.string() ), wxEmptyString, wxEmptyString ) );
+
+    if( !plotter )
+        throw TOOL_ERROR( "Plotting the board failed." );
+
+    PlotBoardLayers( &aBoard, plotter.get(), aLayers, opts );
+    plotter->EndPlot();
+    plotter.reset();
+
+    wxImage image;
+
+    if( !image.LoadFile( wx( file.string() ), wxBITMAP_TYPE_PNG ) )
+        throw TOOL_ERROR( "Reading the plotted picture failed." );
+
+    const double scale = dpi / 25.4;
+    wxRect       crop( KiROUND( pcbIUScale.IUTomm( aArea.GetLeft() ) * scale ),
+                       KiROUND( pcbIUScale.IUTomm( aArea.GetTop() ) * scale ),
+                       KiROUND( pcbIUScale.IUTomm( aArea.GetWidth() ) * scale ),
+                       KiROUND( pcbIUScale.IUTomm( aArea.GetHeight() ) * scale ) );
+    crop.Intersect( wxRect( 0, 0, image.GetWidth(), image.GetHeight() ) );
+
+    if( crop.IsEmpty() )
+        throw TOOL_ERROR( "The area is outside the page." );
+
+    image = image.GetSubImage( crop );
+
+    if( image.GetWidth() > aWidth )
+        image.Rescale( aWidth, KiROUND( image.GetHeight() * double( aWidth ) / image.GetWidth() ),
+                       wxIMAGE_QUALITY_HIGH );
+
+    wxMemoryOutputStream stream;
+    image.SaveFile( stream, wxBITMAP_TYPE_PNG );
+    std::string data( stream.GetSize(), '\0' );
+    stream.CopyTo( data.data(), data.size() );
+
+    TOOL_RESULT result;
+    result.content.push_back( ImageContent( base64( data ), "image/png" ) );
+    JSON info{ { "width", image.GetWidth() },
+               { "height", image.GetHeight() },
+               { "pixelsPerMm", std::round( image.GetWidth() / pcbIUScale.IUTomm( aArea.GetWidth() ) * 1000 ) / 1000 },
+               { "area",
+                 { { "x1", mm( aArea.GetLeft() ) },
+                   { "y1", mm( aArea.GetTop() ) },
+                   { "x2", mm( aArea.GetRight() ) },
+                   { "y2", mm( aArea.GetBottom() ) } } } };
+    result.content.push_back( TextContent( info.dump() ) );
+    result.structuredContent = info;
+    return result;
+}
+
+
 void RegisterPcbCheckTools( AGENT_SERVICES& aServices )
 {
     TOOL_REGISTRY& tools = aServices.Tools();
@@ -484,69 +550,7 @@ void RegisterPcbCheckTools( AGENT_SERVICES& aServices )
                              enabled.push_back( layer );
                      }
 
-                     const double pxPerMm = width / pcbIUScale.IUTomm( area.GetWidth() );
-                     const int    dpi = std::clamp( static_cast<int>( std::ceil( pxPerMm * 25.4 ) ), 20, 1200 );
-
-                     PCB_PLOT_PARAMS opts = plotParams( PLOT_FORMAT::PNG );
-                     opts.SetPngDPI( dpi );
-                     opts.SetPngAntialias( true );
-                     opts.SetBlackAndWhite( false );
-                     opts.SetBackgroundColor( opts.ColorSettings()->GetColor( LAYER_PCB_BACKGROUND ) );
-
-                     const fs::path file = project->Root() / ".agentic" / "captures" / "board.png";
-                     fs::create_directories( file.parent_path() );
-
-                     std::unique_ptr<PLOTTER> plotter( StartPlotBoard( &board, &opts, enabled.front(), wxS( "capture" ),
-                                                                       wx( file.string() ), wxEmptyString,
-                                                                       wxEmptyString ) );
-
-                     if( !plotter )
-                         throw TOOL_ERROR( "Plotting the board failed." );
-
-                     PlotBoardLayers( &board, plotter.get(), enabled, opts );
-                     plotter->EndPlot();
-                     plotter.reset();
-
-                     wxImage image;
-
-                     if( !image.LoadFile( wx( file.string() ), wxBITMAP_TYPE_PNG ) )
-                         throw TOOL_ERROR( "Reading the plotted picture failed." );
-
-                     const double scale = dpi / 25.4;
-                     wxRect       crop( KiROUND( pcbIUScale.IUTomm( area.GetLeft() ) * scale ),
-                                        KiROUND( pcbIUScale.IUTomm( area.GetTop() ) * scale ),
-                                        KiROUND( pcbIUScale.IUTomm( area.GetWidth() ) * scale ),
-                                        KiROUND( pcbIUScale.IUTomm( area.GetHeight() ) * scale ) );
-                     crop.Intersect( wxRect( 0, 0, image.GetWidth(), image.GetHeight() ) );
-
-                     if( crop.IsEmpty() )
-                         throw TOOL_ERROR( "The area is outside the page." );
-
-                     image = image.GetSubImage( crop );
-
-                     if( image.GetWidth() > width )
-                         image.Rescale( width, KiROUND( image.GetHeight() * double( width ) / image.GetWidth() ),
-                                        wxIMAGE_QUALITY_HIGH );
-
-                     wxMemoryOutputStream stream;
-                     image.SaveFile( stream, wxBITMAP_TYPE_PNG );
-                     std::string data( stream.GetSize(), '\0' );
-                     stream.CopyTo( data.data(), data.size() );
-
-                     TOOL_RESULT result;
-                     result.content.push_back( ImageContent( base64( data ), "image/png" ) );
-                     JSON info{ { "width", image.GetWidth() },
-                                { "height", image.GetHeight() },
-                                { "pixelsPerMm",
-                                  std::round( image.GetWidth() / pcbIUScale.IUTomm( area.GetWidth() ) * 1000 ) / 1000 },
-                                { "area",
-                                  { { "x1", mm( area.GetLeft() ) },
-                                    { "y1", mm( area.GetTop() ) },
-                                    { "x2", mm( area.GetRight() ) },
-                                    { "y2", mm( area.GetBottom() ) } } } };
-                     result.content.push_back( TextContent( info.dump() ) );
-                     result.structuredContent = info;
-                     return result;
+                     return PcbCapturePng( *project, board, area, enabled, width );
                  } } );
 
     tools.Add(
