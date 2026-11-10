@@ -116,7 +116,12 @@ set( AGENTIC_PCB_SOURCES
 
 set( AGENTIC_SCH_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_agent_provider.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_check_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_doc_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_items.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_library_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_tools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sch/sch_viewer.cpp
 )
 
 target_sources( pcbnew_kiface_objects PRIVATE ${AGENTIC_PCB_SOURCES} )
@@ -133,5 +138,5 @@ set_property( SOURCE ${CMAKE_SOURCE_DIR}/eeschema/eeschema.cpp ${AGENTIC_SCH_SOU
 # The provider sources call the fork's core.  INTERFACE, so the kiface's own objects keep
 # their upstream compile flags; the kiface modules and the tests that link the object
 # libraries get agentic_core.
-target_link_libraries( pcbnew_kiface_objects INTERFACE agentic_core )
-target_link_libraries( eeschema_kiface_objects INTERFACE agentic_core )
+target_link_libraries( pcbnew_kiface_objects INTERFACE agentic_ui agentic_core )
+target_link_libraries( eeschema_kiface_objects INTERFACE agentic_ui agentic_core )

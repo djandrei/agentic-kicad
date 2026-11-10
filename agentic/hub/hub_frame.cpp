@@ -511,6 +511,38 @@ void HUB_FRAME::registerTestHooks()
                                                   { "dots", dots },
                                                   { "paused", m_host->IsPaused() } } );
               } } );
+
+    // What the person does with a viewer: close it (it hides), press its hub button.
+    m_host->Tools().Add(
+            { "debug_viewer", "Test hook: close a program's viewer, or show it as its hub button does.", "debug",
+              JSON{ { "type", "object" },
+                    { "properties",
+                      { { "program", { { "type", "string" } } },
+                        { "action", { { "type", "string" }, { "enum", { "close", "show" } } } } } },
+                    { "required", { "program", "action" } } },
+              [this]( const JSON& aArgs, TOOL_CONTEXT& )
+              {
+                  AGENT_PROVIDER* provider = m_host->ProviderForGroup( aArgs["program"] );
+
+                  if( !provider )
+                      throw TOOL_ERROR( "No such program." );
+
+                  if( aArgs["action"] == "show" )
+                  {
+                      showViewer( *provider );
+                  }
+                  else
+                  {
+                      auto it = m_viewers.find( { aArgs["program"].get<std::string>(), m_host->Sessions().Current() } );
+
+                      if( it == m_viewers.end() )
+                          throw TOOL_ERROR( "That viewer is not open." );
+
+                      it->second->Close();
+                  }
+
+                  return TOOL_RESULT::Data( JSON{ { "done", true } } );
+              } } );
 }
 
 } // namespace AGENTIC

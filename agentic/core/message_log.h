@@ -77,7 +77,7 @@ private:
 
 /**
  * Collects what is reported during one tool call: a REPORTER to hand to engine calls, plus
- * a wxLog target installed for the life of the capture.  The records are kept in the
+ * what is logged through wxLog for the life of the capture (see InstallAgentLogTarget).  The records are kept in the
  * capture and copied to a MESSAGE_LOG when it ends.
  */
 class CALL_MESSAGES : public REPORTER
@@ -102,9 +102,15 @@ public:
 private:
     std::string             m_tool;
     std::vector<LOG_RECORD> m_records;
-    wxLog*                  m_previousLog = nullptr;
-    std::unique_ptr<wxLog>  m_capture;
+    CALL_MESSAGES*          m_previous = nullptr;
 };
+
+
+/**
+ * Make the agent's log target the process's wxLog target (once).  Called by AGENT_HOST, so
+ * CALL_MESSAGES receive what engines log during a call.
+ */
+void InstallAgentLogTarget();
 
 } // namespace AGENTIC
 

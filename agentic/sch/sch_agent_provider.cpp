@@ -25,6 +25,8 @@
 #include <agentic/core/services.h>
 #include <agentic/sch/sch_agent_provider.h>
 #include <agentic/sch/sch_library_tools.h>
+#include <agentic/sch/sch_tools.h>
+#include <agentic/sch/sch_viewer.h>
 
 #include <erc/erc_item.h>
 #include <libraries/symbol_library_adapter.h>
@@ -54,6 +56,13 @@ public:
                                  } );
 
         AGENTIC::RegisterSymbolLibraryTools( aServices );
+        AGENTIC::RegisterSchEditTools( aServices );
+        AGENTIC::RegisterSchCheckTools( aServices );
+    }
+
+    AGENTIC::AGENT_VIEWER* CreateViewer( AGENTIC::AGENT_SERVICES& aServices, AGENTIC::AGENT_PROJECT& aProject ) override
+    {
+        return AGENTIC::CreateSchViewer( aServices, aProject );
     }
 };
 

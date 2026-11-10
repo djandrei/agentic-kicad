@@ -82,6 +82,7 @@ AGENT_HOST::AGENT_HOST( MODE aMode, KIWAY* aKiway, EXECUTOR aExecutor ) :
                 SetPaused( aPaused );
             } );
 
+    InstallAgentLogTarget();
     registerCoreTools();
     RegisterProjectTools( m_services );
     RegisterLibraryTools( m_services );
@@ -194,9 +195,15 @@ TOOL_RESULT AGENT_HOST::runTool( const std::string& aName, const JSON& aArgs, co
         }
         else if( result.structuredContent.is_object() )
         {
-            JSON structured = result.structuredContent;
-            structured["messages"] = records;
-            result = TOOL_RESULT::Data( structured );
+            // Keep other content (images); refresh the text copy of the structured result.
+            const std::string oldText = result.structuredContent.dump( 2, ' ', false, JSON::error_handler_t::replace );
+            result.structuredContent["messages"] = records;
+
+            for( JSON& item : result.content )
+            {
+                if( item.value( "type", "" ) == "text" && item.value( "text", "" ) == oldText )
+                    item["text"] = result.structuredContent.dump( 2, ' ', false, JSON::error_handler_t::replace );
+            }
         }
     }
 

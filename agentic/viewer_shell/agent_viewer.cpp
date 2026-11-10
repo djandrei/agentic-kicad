@@ -120,13 +120,6 @@ AGENT_VIEWER::AGENT_VIEWER( AGENT_SERVICES& aServices, AGENT_PROJECT& aProject, 
                                      .CloseButton( false )
                                      .MinSize( -1, m_status->GetBestSize().y ) );
 
-    // Restore the dock layout saved for this program.
-    wxFFile  layout( layoutFile(), wxS( "r" ) );
-    wxString saved;
-
-    if( layout.IsOpened() && layout.ReadAll( &saved ) && !saved.IsEmpty() )
-        m_aui.LoadPerspective( saved, false );
-
     m_status->ViewOnlyButton()->Bind( wxEVT_TOGGLEBUTTON,
                                       [this]( wxCommandEvent& )
                                       {
@@ -186,6 +179,35 @@ void AGENT_VIEWER::SetCentralView( wxWindow* aView )
 }
 
 
+void AGENT_VIEWER::AddDock( wxWindow* aWindow, const wxString& aName, const wxString& aCaption, int aSide )
+{
+    wxAuiPaneInfo info = wxAuiPaneInfo().Name( aName ).Caption( aCaption ).CloseButton( false );
+
+    if( aSide == wxLEFT )
+        info.Left().BestSize( 220, -1 );
+    else if( aSide == wxBOTTOM )
+        info.Bottom().BestSize( -1, 140 );
+    else
+        info.Right().BestSize( 320, -1 );
+
+    m_aui.AddPane( aWindow, info );
+    m_programDocks.push_back( aName );
+}
+
+
+void AGENT_VIEWER::FinishLayout()
+{
+    // Restore the dock layout saved for this program.
+    wxFFile  layout( layoutFile(), wxS( "r" ) );
+    wxString saved;
+
+    if( layout.IsOpened() && layout.ReadAll( &saved ) && !saved.IsEmpty() )
+        m_aui.LoadPerspective( saved, false );
+
+    m_aui.Update();
+}
+
+
 void AGENT_VIEWER::Retire()
 {
     m_retiring = true;
@@ -216,11 +238,17 @@ void AGENT_VIEWER::toggleViewOnly()
         m_fullLayout = m_aui.SavePerspective();
         m_aui.GetPane( wxS( "changes" ) ).Hide();
         m_aui.GetPane( wxS( "messages" ) ).Hide();
+
+        for( const wxString& dock : m_programDocks )
+            m_aui.GetPane( dock ).Hide();
     }
     else
     {
         m_aui.GetPane( wxS( "changes" ) ).Show();
         m_aui.GetPane( wxS( "messages" ) ).Show();
+
+        for( const wxString& dock : m_programDocks )
+            m_aui.GetPane( dock ).Show();
         m_fullLayout.Clear();
     }
 

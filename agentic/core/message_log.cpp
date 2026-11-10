@@ -22,6 +22,8 @@
 
 #include <wx/log.h>
 
+#include <cstdio>
+
 
 namespace AGENTIC
 {
@@ -29,15 +31,17 @@ namespace AGENTIC
 namespace
 {
 
-    /// Turns wxLogError/Warning/Message calls made by engines into call records.
-    class CAPTURE_LOG : public wxLog
-    {
-    public:
-        explicit CAPTURE_LOG( CALL_MESSAGES& aOwner ) :
-                m_owner( aOwner )
-        {
-        }
+    /// The capture of the call being served, if any.
+    CALL_MESSAGES* g_currentCall = nullptr;
 
+    /**
+     * The process's wxLog target in agent mode.  It is installed once: replacing a target
+     * flushes the old one, and wx's GUI target flushes into a modal message box, which would
+     * block viewer mode.  Engine messages go to the call being served, or to stderr between
+     * calls.
+     */
+    class AGENT_LOG_TARGET : public wxLog
+    {
     protected:
         void DoLogRecord( wxLogLevel aLevel, const wxString& aMsg, const wxLogRecordInfo& ) override
         {
@@ -50,11 +54,11 @@ namespace
             else if( aLevel >= wxLOG_Debug )
                 return; // traces and debug output are not the agent's business
 
-            m_owner.Add( severity, aMsg.ToStdString( wxConvUTF8 ) );
+            if( g_currentCall )
+                g_currentCall->Add( severity, aMsg.ToStdString( wxConvUTF8 ) );
+            else if( severity != RPT_SEVERITY_INFO )
+                std::fprintf( stderr, "%s\n", static_cast<const char*>( aMsg.ToUTF8() ) );
         }
-
-    private:
-        CALL_MESSAGES& m_owner;
     };
 
 } // namespace
@@ -122,17 +126,29 @@ std::vector<LOG_RECORD> MESSAGE_LOG::Since( uint64_t aSince, size_t aLimit ) con
 }
 
 
+void InstallAgentLogTarget()
+{
+    if( dynamic_cast<AGENT_LOG_TARGET*>( wxLog::GetActiveTarget() ) )
+        return;
+
+    // Whatever was logged before agent mode started is dropped, not shown in a dialog.
+    wxLog* old = wxLog::SetActiveTarget( nullptr );
+    delete old;
+    wxLog::SetActiveTarget( new AGENT_LOG_TARGET );
+}
+
+
 CALL_MESSAGES::CALL_MESSAGES( std::string aTool ) :
         m_tool( std::move( aTool ) ),
-        m_capture( std::make_unique<CAPTURE_LOG>( *this ) )
+        m_previous( g_currentCall )
 {
-    m_previousLog = wxLog::SetActiveTarget( m_capture.get() );
+    g_currentCall = this;
 }
 
 
 CALL_MESSAGES::~CALL_MESSAGES()
 {
-    wxLog::SetActiveTarget( m_previousLog );
+    g_currentCall = m_previous;
 }
 
 

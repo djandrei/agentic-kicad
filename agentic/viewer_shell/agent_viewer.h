@@ -22,6 +22,7 @@
 #define AGENTIC_AGENT_VIEWER_H
 
 #include <string>
+#include <vector>
 
 #include <wx/aui/aui.h>
 #include <wx/frame.h>
@@ -81,6 +82,12 @@ public:
     /// Put the program's view in the centre.  Called once by the subclass constructor.
     void SetCentralView( wxWindow* aView );
 
+    /// Add a program dock (hierarchy, ERC markers, nets) on \a aSide (wxLEFT, wxRIGHT, wxBOTTOM).
+    void AddDock( wxWindow* aWindow, const wxString& aName, const wxString& aCaption, int aSide );
+
+    /// Restore the saved dock layout; called by the subclass after its last AddDock.
+    void FinishLayout();
+
     /// Close for good (project closed, program exit); a user close only hides.
     void Retire();
 
@@ -109,16 +116,17 @@ private:
     void     refreshMessages();
     wxString layoutFile() const;
 
-    AGENT_SERVICES& m_services;
-    AGENT_PROJECT&  m_project;
-    std::string     m_program;
-    wxAuiManager    m_aui;
-    wxListCtrl*     m_changes;
-    wxListCtrl*     m_messages;
-    STATUS_ROW*     m_status;
-    wxString        m_fullLayout;
-    uint64_t        m_lastLogSeq = 0;
-    bool            m_retiring = false;
+    AGENT_SERVICES&       m_services;
+    AGENT_PROJECT&        m_project;
+    std::string           m_program;
+    wxAuiManager          m_aui;
+    wxListCtrl*           m_changes;
+    wxListCtrl*           m_messages;
+    STATUS_ROW*           m_status;
+    wxString              m_fullLayout;
+    std::vector<wxString> m_programDocks;
+    uint64_t              m_lastLogSeq = 0;
+    bool                  m_retiring = false;
 };
 
 } // namespace AGENTIC
