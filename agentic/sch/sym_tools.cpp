@@ -320,7 +320,7 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
     TOOL_REGISTRY& tools = aServices.Tools();
 
     tools.Add( { "sym_list", "The symbols of a project symbol library, with their pins.", "sym",
-                 symSchema( JSON::object() ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
+                 symSchema( WithPageArgs( JSON::object() ) ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT&      project = aServices.Sessions().Resolve( aArgs );
                      SYMBOL_LIB_SESSION& session = SymbolLibSession( project, aArgs["library"] );
@@ -329,7 +329,9 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
                      for( const auto& [name, symbol] : session.Library().GetSymbolMap() )
                          symbols.push_back( symbolJson( *symbol ) );
 
-                     return TOOL_RESULT::Data( JSON{ { "library", session.Path() }, { "symbols", symbols } } );
+                     return TOOL_RESULT::Data( JSON{ { "library", session.Path() },
+                                                     { "symbols", Page( symbols, aArgs ) },
+                                                     { "total", symbols.size() } } );
                  } } );
 
     tools.Add( { "sym_create",
@@ -793,7 +795,7 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
                  symSchema( { { "symbol", { { "type", "string" } } },
                               { "unit", { { "type", "integer" }, { "minimum", 1 } } },
                               { "bodyStyle", { { "type", "integer" }, { "minimum", 1 } } },
-                              { "width", { { "type", "integer" }, { "minimum", 100 }, { "maximum", 3000 } } } },
+                              { "width", { { "type", "integer" }, { "minimum", 100 }, { "maximum", 4096 } } } },
                             { "symbol" } ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
@@ -802,7 +804,7 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
                      LIB_SYMBOL&         symbol = session.Symbol( aArgs["symbol"] );
                      double              pxPerMm = 0;
                      std::string png = plotSymbolPng( symbol, aArgs.value( "unit", 1 ), aArgs.value( "bodyStyle", 1 ),
-                                                      aArgs.value( "width", 600 ), pxPerMm );
+                                                      aArgs.value( "width", 1024 ), pxPerMm );
 
                      wxMemoryInputStream stream( png.data(), png.size() );
                      wxImage             image( stream, wxBITMAP_TYPE_PNG );

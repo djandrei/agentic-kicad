@@ -484,7 +484,7 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
     TOOL_REGISTRY& tools = aServices.Tools();
 
     tools.Add( { "fp_list", "The footprints of a project footprint library: name, description, type, pad count.", "fp",
-                 fpSchema( {}, {}, false ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
+                 fpSchema( WithPageArgs( JSON::object() ), {}, false ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT&         project = aServices.Sessions().Resolve( aArgs );
                      FOOTPRINT_LIB_SESSION& session = FootprintLibSession( project, aArgs["library"] );
@@ -493,7 +493,9 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
                      for( const std::string& name : session.Names() )
                          out.push_back( footprintJson( session.Footprint( name ), false ) );
 
-                     return TOOL_RESULT::Data( { { "library", session.Path() }, { "footprints", out } } );
+                     return TOOL_RESULT::Data( { { "library", session.Path() },
+                                                 { "footprints", Page( out, aArgs ) },
+                                                 { "total", out.size() } } );
                  } } );
 
     tools.Add( { "fp_get",
@@ -1151,7 +1153,7 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
                  "The area returned is in footprint coordinates (mm).",
                  "fp",
                  fpSchema( { { "layers", { { "type", "array" }, { "items", { { "type", "string" } } } } },
-                             { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4000 } } } } ),
+                             { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4096 } } } } ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT&         project = aServices.Sessions().Resolve( aArgs );
@@ -1177,7 +1179,7 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
                      BOX2I area = board->GetFirstFootprint()->GetBoundingBox( true );
                      area.Inflate( PcbIu( 1 ) );
 
-                     TOOL_RESULT result = PcbCapturePng( project, *board, area, layers, aArgs.value( "width", 800 ) );
+                     TOOL_RESULT result = PcbCapturePng( project, *board, area, layers, aArgs.value( "width", 1024 ) );
                      JSON&       info = result.structuredContent;
                      info["area"] = { { "x1", mm( area.GetLeft() - offset.x ) },
                                       { "y1", mm( area.GetTop() - offset.y ) },

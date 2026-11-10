@@ -528,7 +528,7 @@ void RegisterDrawingSheetTools( AGENT_SERVICES& aServices )
     tools.Add( { "ds_capture", "Look at a drawing sheet on a page (A4 by default) with an empty title block, as a PNG.",
                  "ds",
                  dsSchema( { { "page", { { "type", "string" } } },
-                             { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4000 } } } } ),
+                             { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4096 } } } } ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT& project = aServices.Sessions().Resolve( aArgs );
@@ -538,7 +538,7 @@ void RegisterDrawingSheetTools( AGENT_SERVICES& aServices )
 
                      wxImage picture =
                              DrawingSheetPicture( session.Model(), project.KicadProject(), aArgs.value( "page", "A4" ),
-                                                  aArgs.value( "width", 1000 ), file.string() );
+                                                  aArgs.value( "width", 1024 ), file.string() );
 
                      wxMemoryOutputStream stream;
                      picture.SaveFile( stream, wxBITMAP_TYPE_PNG );

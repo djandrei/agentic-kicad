@@ -735,6 +735,9 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
                   return set->handler( args, aContext );
               } } );
 
+    // A number, or a SPICE value with a suffix ("1u", "10Meg").
+    const JSON SPICE_NUMBER = { { "type", { "number", "string" } } };
+
     tools.Add(
             { "sim_analysis_set",
               "Set the analysis sim_run runs (kept until changed; the schematic's text directive is used when none "
@@ -749,9 +752,9 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
                                    { "source", { { "type", "string" } } },
                                    { "sweep", { { "type", "string" }, { "enum", { "dec", "oct", "lin" } } } },
                                    { "points", { { "type", "integer" }, { "minimum", 1 } } },
-                                   { "start", {} },
-                                   { "stop", {} },
-                                   { "step", {} },
+                                   { "start", SPICE_NUMBER },
+                                   { "stop", SPICE_NUMBER },
+                                   { "step", SPICE_NUMBER },
                                    { "output", { { "type", "string" } } },
                                    { "reference", { { "type", "string" } } },
                                    { "nodes", { { "type", "array" } } } } ),
@@ -956,7 +959,7 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
               } } );
 
     tools.Add( { "sim_vectors", "The vectors of the last run: names and point counts, and the x axis.", "sim",
-                 ProjectToolSchema( {} ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
+                 ProjectToolSchema( WithPageArgs( JSON::object() ) ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT& project = aServices.Sessions().Resolve( aArgs );
                      SIM_STATE&     state = SimState( project );
@@ -968,8 +971,10 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
                      for( const std::string& name : sim->AllVectors() )
                          list.push_back( { { "name", name }, { "points", sim->GetGainVector( name ).size() } } );
 
-                     return TOOL_RESULT::Data(
-                             { { "analysis", state.lastCommand }, { "xAxis", state.xAxis }, { "vectors", list } } );
+                     return TOOL_RESULT::Data( { { "analysis", state.lastCommand },
+                                                 { "xAxis", state.xAxis },
+                                                 { "vectors", Page( list, aArgs ) },
+                                                 { "total", list.size() } } );
                  } } );
 
     const JSON SIGNAL_PROPERTIES = {
@@ -1126,8 +1131,8 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
               "sim",
               ProjectToolSchema( { { "vectors", { { "type", "array" }, { "items", { { "type", "string" } } } } },
                                    { "quantity", SIGNAL_PROPERTIES["quantity"] },
-                                   { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 2000 } } },
-                                   { "height", { { "type", "integer" }, { "minimum", 150 }, { "maximum", 1500 } } } } ),
+                                   { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4096 } } },
+                                   { "height", { { "type", "integer" }, { "minimum", 150 }, { "maximum", 4096 } } } } ),
               [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
               {
                   AGENT_PROJECT& project = aServices.Sessions().Resolve( aArgs );
@@ -1156,7 +1161,7 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
 
                   const bool  logX = state.xAxis == "frequency";
                   std::string png =
-                          plotPng( project, signals, logX, aArgs.value( "width", 800 ), aArgs.value( "height", 480 ) );
+                          plotPng( project, signals, logX, aArgs.value( "width", 1024 ), aArgs.value( "height", 614 ) );
 
                   TOOL_RESULT result;
                   result.content.push_back(

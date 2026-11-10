@@ -301,7 +301,8 @@ void RegisterLibraryTools( AGENT_SERVICES& aServices )
               "The symbol, footprint and design block libraries the project sees: rows of the global and project "
               "library tables (name, URI, scope, whether the agent may change the library). The agent may change "
               "only project libraries stored inside the project folder.",
-              "project", ProjectToolSchema( { { "type", typeArg } } ), [&sessions]( const JSON& aArgs, TOOL_CONTEXT& )
+              "project", ProjectToolSchema( WithPageArgs( { { "type", typeArg } } ) ),
+              [&sessions]( const JSON& aArgs, TOOL_CONTEXT& )
               {
                   AGENT_PROJECT& project = sessions.Resolve( aArgs );
                   JSON           out = JSON::object();
@@ -319,7 +320,8 @@ void RegisterLibraryTools( AGENT_SERVICES& aServices )
                           rows.push_back( rowJson( project, *row ) );
                       }
 
-                      out[typeName( type )] = rows;
+                      out[typeName( type )] = Page( rows, aArgs );
+                      out["totals"][typeName( type )] = rows.size();
                   }
 
                   return TOOL_RESULT::Data( out );

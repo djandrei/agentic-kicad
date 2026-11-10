@@ -367,8 +367,8 @@ void RegisterView3dTools( AGENT_SERVICES& aServices )
                  "view3d",
                  ProjectToolSchema( merged(
                          merged( CAMERA_PROPERTIES, OPTION_PROPERTIES ),
-                         { { "width", { { "type", "integer" }, { "minimum", 64 }, { "maximum", 4000 } } },
-                           { "height", { { "type", "integer" }, { "minimum", 64 }, { "maximum", 4000 } } } } ) ),
+                         { { "width", { { "type", "integer" }, { "minimum", 64 }, { "maximum", 4096 } } },
+                           { "height", { { "type", "integer" }, { "minimum", 64 }, { "maximum", 4096 } } } } ) ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& aContext )
                  {
                      AGENT_PROJECT&     project = aServices.Sessions().Resolve( aArgs );
@@ -376,8 +376,8 @@ void RegisterView3dTools( AGENT_SERVICES& aServices )
                      VIEW3D_STATE       state = View3dState( project );
                      update( state, aArgs );
 
-                     wxImage image = render( session.Board(), state, aArgs.value( "width", 800 ),
-                                             aArgs.value( "height", 600 ), aContext );
+                     wxImage image = render( session.Board(), state, aArgs.value( "width", 1024 ),
+                                             aArgs.value( "height", 768 ), aContext );
 
                      wxMemoryOutputStream stream;
                      image.SaveFile( stream, wxBITMAP_TYPE_PNG );

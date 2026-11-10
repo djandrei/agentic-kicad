@@ -588,7 +588,7 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
     tools.Add( { "sch_nets",
                  "The schematic's nets and the pins on each (REF.PIN), plus the pins on no net with anything else. "
                  "Give net for one net.",
-                 "sch", schSchema( { { "net", { { "type", "string" } } } } ),
+                 "sch", schSchema( WithPageArgs( { { "net", { { "type", "string" } } } } ) ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      SCH_DOC_SESSION& s = session( aServices, aArgs );
@@ -607,8 +607,9 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                          throw TOOL_ERROR( "No net '" + aArgs["net"].get<std::string>()
                                            + "'. Names are as sch_nets lists them, e.g. /SDA." );
 
-                     return TOOL_RESULT::Data(
-                             JSON{ { "nets", nets }, { "unconnectedPins", snapshot.unconnectedPins } } );
+                     return TOOL_RESULT::Data( JSON{ { "nets", Page( nets, aArgs ) },
+                                                     { "total", nets.size() },
+                                                     { "unconnectedPins", snapshot.unconnectedPins } } );
                  } } );
 
     // Placement and editing --------------------------------------------------------------------

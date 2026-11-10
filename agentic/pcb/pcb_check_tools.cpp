@@ -392,7 +392,8 @@ void RegisterPcbCheckTools( AGENT_SERVICES& aServices )
                  } } );
 
     tools.Add( { "pcb_unrouted", "Connections still to route: per net, the pads to join and the airline length.", "pcb",
-                 pcbSchema( { { "net", { { "type", "string" } } } } ), [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
+                 pcbSchema( WithPageArgs( { { "net", { { "type", "string" } } } } ) ),
+                 [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      BOARD_DOC_SESSION&                 s = session( aServices, aArgs );
                      BOARD&                             board = s.Board();
@@ -445,7 +446,8 @@ void RegisterPcbCheckTools( AGENT_SERVICES& aServices )
                          nets.push_back( { { "net", utf8( net->GetNetname() ) }, { "connections", edges } } );
                      }
 
-                     return TOOL_RESULT::Data( JSON{ { "unrouted", total }, { "nets", nets } } );
+                     return TOOL_RESULT::Data( JSON{
+                             { "unrouted", total }, { "nets", Page( nets, aArgs ) }, { "netsTotal", nets.size() } } );
                  } } );
 
     tools.Add( { "pcb_stats",
@@ -504,13 +506,13 @@ void RegisterPcbCheckTools( AGENT_SERVICES& aServices )
                  pcbSchema( { { "layers", { { "type", "array" }, { "items", { { "type", "string" } } } } },
                               { "area", { { "type", "object" } } },
                               { "focus", { { "type", "string" } } },
-                              { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4000 } } } } ),
+                              { "width", { { "type", "integer" }, { "minimum", 200 }, { "maximum", 4096 } } } } ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT*     project = nullptr;
                      BOARD_DOC_SESSION& s = session( aServices, aArgs, &project );
                      BOARD&             board = s.Board();
-                     const int          width = aArgs.value( "width", 1200 );
+                     const int          width = aArgs.value( "width", 1024 );
 
                      BOX2I area;
 

@@ -35,6 +35,12 @@ void RegisterProjectTools( AGENT_SERVICES& aServices );
 /// "project" argument every project tool takes.
 nlohmann::json ProjectToolSchema( nlohmann::json aProperties, nlohmann::json aRequired = nlohmann::json::array() );
 
+/// \a aProperties with the paging arguments of list tools: offset, limit (1 to 500, default 100).
+nlohmann::json WithPageArgs( nlohmann::json aProperties );
+
+/// The page of \a aItems that \a aArgs' offset and limit ask for (list results stay bounded).
+nlohmann::json Page( const nlohmann::json& aItems, const nlohmann::json& aArgs );
+
 } // namespace AGENTIC
 
 #endif // AGENTIC_CORE_TOOLS_H

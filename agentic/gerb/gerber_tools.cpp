@@ -617,7 +617,7 @@ void RegisterGerberTools( AGENT_SERVICES& aServices )
               "their layer colours, as a PNG.",
               "gerber",
               ProjectToolSchema( { { "layers", { { "type", "array" } } },
-                                   { "width", { { "type", "integer" }, { "minimum", 100 }, { "maximum", 4000 } } } } ),
+                                   { "width", { { "type", "integer" }, { "minimum", 100 }, { "maximum", 4096 } } } } ),
               [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
               {
                   AGENT_PROJECT&   project = aServices.Sessions().Resolve( aArgs );
@@ -627,7 +627,7 @@ void RegisterGerberTools( AGENT_SERVICES& aServices )
                   for( const JSON& layer : aArgs.value( "layers", JSON::array() ) )
                       indices.push_back( layerIndex( state, layer ) );
 
-                  wxImage picture = GerberPicture( project, indices, aArgs.value( "width", 800 ) );
+                  wxImage picture = GerberPicture( project, indices, aArgs.value( "width", 1024 ) );
 
                   wxMemoryOutputStream stream;
                   picture.SaveFile( stream, wxBITMAP_TYPE_PNG );

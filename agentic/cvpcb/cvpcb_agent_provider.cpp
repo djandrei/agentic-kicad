@@ -212,7 +212,7 @@ namespace
         tools.Add( { "cvpcb_list",
                      "The schematic's symbols as CvPcb lists them: reference, value, assigned footprint, footprint "
                      "filters and pin count.",
-                     "cvpcb", ProjectToolSchema( { { "unassigned", { { "type", "boolean" } } } } ),
+                     "cvpcb", ProjectToolSchema( WithPageArgs( { { "unassigned", { { "type", "boolean" } } } } ) ),
                      [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                      {
                          AGENT_PROJECT& project = aServices.Sessions().Resolve( aArgs );
@@ -229,7 +229,7 @@ namespace
                              out.push_back( componentJson( *c ) );
                          }
 
-                         return TOOL_RESULT::Data( { { "symbols", out } } );
+                         return TOOL_RESULT::Data( { { "symbols", Page( out, aArgs ) }, { "total", out.size() } } );
                      } } );
 
         tools.Add(

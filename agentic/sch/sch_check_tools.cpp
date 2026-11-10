@@ -572,14 +572,14 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
                               { "width",
                                 { { "type", "integer" },
                                   { "minimum", 200 },
-                                  { "maximum", 4000 },
-                                  { "description", "Image width in pixels, default 1600." } } } } ),
+                                  { "maximum", 4096 },
+                                  { "description", "Image width in pixels, default 1024." } } } } ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
                  {
                      AGENT_PROJECT*   project = nullptr;
                      SCH_DOC_SESSION& s = session( aServices, aArgs, &project );
                      SCH_SHEET_PATH   path = SchSheet( s, aArgs.value( "sheet", "" ) );
-                     const int        width = aArgs.value( "width", 1600 );
+                     const int        width = aArgs.value( "width", 1024 );
                      const PAGE_INFO& page = path.LastScreen()->GetPageSettings();
                      const double     pageWmm = page.GetWidthMils() * 0.0254;
                      const double     pageHmm = page.GetHeightMils() * 0.0254;

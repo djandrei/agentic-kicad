@@ -201,6 +201,29 @@ JSON ProjectToolSchema( JSON aProperties, JSON aRequired )
 }
 
 
+JSON WithPageArgs( JSON aProperties )
+{
+    aProperties["offset"] = { { "type", "integer" }, { "minimum", 0 } };
+    aProperties["limit"] = {
+        { "type", "integer" }, { "minimum", 1 }, { "maximum", 500 }, { "description", "Default 100." }
+    };
+    return aProperties;
+}
+
+
+JSON Page( const JSON& aItems, const JSON& aArgs )
+{
+    const size_t offset = std::min( aArgs.value( "offset", size_t( 0 ) ), aItems.size() );
+    const size_t limit = aArgs.value( "limit", size_t( 100 ) );
+    JSON         out = JSON::array();
+
+    for( size_t i = offset; i < aItems.size() && out.size() < limit; ++i )
+        out.push_back( aItems[i] );
+
+    return out;
+}
+
+
 void RegisterProjectTools( AGENT_SERVICES& aServices )
 {
     TOOL_REGISTRY&   tools = aServices.Tools();
