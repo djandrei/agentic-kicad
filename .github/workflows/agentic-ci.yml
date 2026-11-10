@@ -1,0 +1,53 @@
+# Agentic-KiCad CI: build with KICAD_AGENTIC=ON and run the agentic tests.
+name: agentic-ci
+
+on:
+  push:
+    branches: [ agentic ]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 5G
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          ./install-deps.sh
+          # install-deps.sh does not list the RHI shader compilers yet
+          sudo apt-get install -y ccache ninja-build xvfb xauth python3-pytest glslang-tools spirv-tools
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-agentic-${{ github.sha }}
+          restore-keys: ccache-agentic-
+
+      - name: Configure
+        run: >
+          cmake -S . -B build/agentic -G Ninja
+          -DCMAKE_BUILD_TYPE=QABUILD
+          -DKICAD_STDLIB_LIGHT_DEBUG=ON
+          -DKICAD_BUILD_QA_TESTS=ON
+          -DKICAD_USE_CMAKE_FINDPROTOBUF=ON
+          -DKICAD_AGENTIC=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: ninja -C build/agentic
+
+      - name: Agentic tests
+        run: xvfb-run -a ctest --test-dir build/agentic -R '^qa_agentic' --output-on-failure
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
