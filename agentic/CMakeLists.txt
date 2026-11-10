@@ -36,6 +36,10 @@ set_property( SOURCE ${CMAKE_SOURCE_DIR}/pcb_calculator/pcb_calculator.cpp
               DIRECTORY ${CMAKE_SOURCE_DIR}/pcb_calculator
               APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
 
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/cvpcb/cvpcb.cpp
+              DIRECTORY ${CMAKE_SOURCE_DIR}/cvpcb
+              APPEND PROPERTY COMPILE_DEFINITIONS KICAD_AGENTIC )
+
 # Protocol and transports: no wx dependency.
 add_library( agentic_protocol STATIC
     protocol/json_rpc.cpp
@@ -182,6 +186,15 @@ set( AGENTIC_CALC_SOURCES
 )
 
 target_sources( pcb_calculator_kiface PRIVATE ${AGENTIC_CALC_SOURCES} )
+
+# CvPcb: its kiface is a module too.
+set( AGENTIC_CVPCB_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cvpcb/cvpcb_agent_provider.cpp )
+target_sources( cvpcb_kiface PRIVATE ${AGENTIC_CVPCB_SOURCES} )
+target_link_libraries( cvpcb_kiface agentic_ui agentic_core )
+
+set_property( SOURCE ${CMAKE_SOURCE_DIR}/cvpcb/cvpcb.cpp ${AGENTIC_CVPCB_SOURCES}
+              DIRECTORY ${CMAKE_SOURCE_DIR}/cvpcb
+              APPEND PROPERTY INCLUDE_DIRECTORIES ${AGENTIC_INCLUDE_ROOT} )
 target_link_libraries( pcb_calculator_kiface agentic_ui agentic_core )
 
 set_property( SOURCE ${CMAKE_SOURCE_DIR}/pcb_calculator/pcb_calculator.cpp ${AGENTIC_CALC_SOURCES}

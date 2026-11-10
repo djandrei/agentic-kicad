@@ -37,6 +37,10 @@
 #include <set>
 #include <project_pcb.h>
 
+#ifdef KICAD_AGENTIC
+#include <agentic/cvpcb/cvpcb_agent_provider.h>
+#endif
+
 namespace CV {
 
 int testFootprintLink( const wxString& aFootprint, PROJECT* aProject )
@@ -162,6 +166,13 @@ static struct IFACE : public KIFACE_BASE
         case KIFACE_FOOTPRINT_PAD_NUMBERS:
             return KifaceServiceAddress<KIFACE_FOOTPRINT_PAD_NUMBERS_SERVICE>(
                     &getFootprintPadNumbers );
+
+#ifdef KICAD_AGENTIC
+            // clang-format off
+        case KIFACE_AGENT_PROVIDER:
+            return CvpcbAgentProvider();
+            // clang-format on
+#endif
 
         default:
             return nullptr;

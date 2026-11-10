@@ -37,6 +37,7 @@ false.
 | `eeschema/eeschema.cpp` | include of `agentic/sch/sch_agent_provider.h`; `case KIFACE_AGENT_PROVIDER` in `IfaceOrAddress` (11 lines) | 3 |
 | `pagelayout_editor/pl_editor.cpp` | include of `agentic/ds/ds_agent_provider.h` and `kiface_ids.h`; `IfaceOrAddress` returns `PlEditorAgentProvider()` for `KIFACE_AGENT_PROVIDER` (11 lines). The kiface is a module without an object library, so `agentic/CMakeLists.txt` adds the sources and links `agentic_ui agentic_core` to `pl_editor_kiface` itself | 12 |
 | `pcb_calculator/pcb_calculator.cpp` | include of `agentic/calc/calc_agent_provider.h` and `kiface_ids.h`; `IfaceOrAddress` returns `CalculatorAgentProvider()` for `KIFACE_AGENT_PROVIDER` (11 lines). The fork's calculator sources are added to `pcb_calculator_kiface` | 13 |
+| `cvpcb/cvpcb.cpp` | include of `agentic/cvpcb/cvpcb_agent_provider.h`; `case KIFACE_AGENT_PROVIDER` in `IfaceOrAddress` (11 lines). The provider reuses `GetQuotedText()` from `cvpcb/auto_associate.cpp` | 14 |
 | `gerbview/gerbview.cpp` | include of `agentic/gerb/gerber_agent_provider.h` and `kiface_ids.h`; `IfaceOrAddress` returns `GerbviewAgentProvider()` for `KIFACE_AGENT_PROVIDER` (13 lines) | 11 |
 
 `agentic/CMakeLists.txt` adds the provider sources to the kiface targets
