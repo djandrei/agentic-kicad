@@ -12,6 +12,7 @@ Agentic-KiCad keeps its code in its own directories, so merging upstream
 | `doc/agentic/` | fork documentation |
 | `tools/agentic/` | stage gate and generators |
 | `.github/workflows/agentic-ci.yml` | fork CI |
+| `README.md` (top part, up to the `---` line) | the fork's introduction and viewer pictures (`doc/agentic/images/`), above upstream's README; keep it on top when upstream changes the file |
 
 ## Hooks into upstream files
 

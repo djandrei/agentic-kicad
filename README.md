@@ -1,3 +1,44 @@
+# Agentic KiCad
+
+This fork of [KiCad](https://kicad.org) lets an AI agent design electronics with KiCad's own
+engine. An MCP server runs inside KiCad, and every program is available to the agent as
+structured tools (147 of them): schematics and hierarchy, symbol and footprint libraries,
+boards with interactive routing, length tuning and zones, ERC and DRC, SPICE simulation, 3D,
+Gerbers, drawing sheets, the calculator and footprint assignment. Any MCP client works,
+for example Claude Code:
+
+```bash
+claude mcp add kicad -- /path/to/kicad-cli mcp --stdio      # headless
+kicad --mcp-port 0                                          # with viewers; prints the URL and token
+```
+
+Every change is saved at once and is one step of the project's file history, so `undo`
+and `redo` work across all programs. In viewer mode a person watches read-only viewers that
+follow the agent (they never change the design) and can pause it. `kicad --classic` starts
+KiCad's usual GUI. Fork code lives in `agentic/`; upstream files are touched only by small,
+documented hooks, and the fork is off unless built with `-DKICAD_AGENTIC=ON`.
+
+Documentation: [overview](doc/agentic/README.md), [connecting a client](doc/agentic/clients.md),
+[tool reference](doc/agentic/tools.md), [upstream merges](doc/agentic/upstream-merge.md).
+
+### The viewers
+
+The pictures below come from one session in which an agent designed a 4-layer sensor board
+and simulated its amplifier stage.
+
+| | |
+|---|---|
+| ![Hub](doc/agentic/images/viewer-hub.png) | ![Schematic](doc/agentic/images/viewer-sch.png) |
+| **Hub**: open projects, their files, every call the agent makes, a button per viewer and Pause. | **Schematic**: follows the sheet the agent edits and highlights the change; hierarchy, ERC and nets beside it. |
+| ![PCB](doc/agentic/images/viewer-pcb.png) | ![3D](doc/agentic/images/viewer-view3d.png) |
+| **PCB**: the board as the agent routes it, with layers, unrouted connections and DRC results. | **3D**: reloads after each board change and uses the camera the agent sets. |
+| ![Symbol editor](doc/agentic/images/viewer-sym.png) | ![Footprint editor](doc/agentic/images/viewer-fp.png) |
+| **Symbol editor**: the symbol the agent builds or inspects, unit by unit, with its pins. | **Footprint editor**: the footprint being built, with its pads. |
+| ![Simulator](doc/agentic/images/viewer-sim.png) | |
+| **Simulator**: the signals and measurements of the last ngspice run, with the netlist. | |
+
+---
+
 # KiCad README
 
 For specific documentation about [building KiCad](https://dev-docs.kicad.org/en/build/), policies
