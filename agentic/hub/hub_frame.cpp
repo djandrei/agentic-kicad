@@ -34,6 +34,7 @@
 #include <wx/stattext.h>
 #include <wx/treectrl.h>
 #include <wx/utils.h>
+#include <wx/wrapsizer.h>
 
 #include <cstdlib>
 
@@ -89,8 +90,8 @@ HUB_FRAME::HUB_FRAME( KIWAY* aKiway ) :
 
     wxBoxSizer* top = new wxBoxSizer( wxVERTICAL );
 
-    // Program buttons
-    wxBoxSizer* programs = new wxBoxSizer( wxHORIZONTAL );
+    // Program buttons, wrapped onto more rows when the window is narrower than all of them
+    wxWrapSizer* programs = new wxWrapSizer( wxHORIZONTAL );
 
     for( const AGENT_HOST::PROVIDER_INFO& info : m_host->Providers() )
     {
@@ -111,8 +112,11 @@ HUB_FRAME::HUB_FRAME( KIWAY* aKiway ) :
                                 showViewer( *provider );
                             } );
 
-        programs->Add( entry.button, 0, wxALL, 2 );
-        programs->Add( entry.dot, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8 );
+        // A button and its activity dot stay on one row.
+        wxBoxSizer* pair = new wxBoxSizer( wxHORIZONTAL );
+        pair->Add( entry.button, 0, wxALL, 2 );
+        pair->Add( entry.dot, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8 );
+        programs->Add( pair, 0 );
         m_buttons[provider->Name().ToStdString()] = entry;
     }
 

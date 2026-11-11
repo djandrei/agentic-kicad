@@ -508,7 +508,9 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
                  {
                      AGENT_PROJECT&         project = aServices.Sessions().Resolve( aArgs );
                      FOOTPRINT_LIB_SESSION& session = FootprintLibSession( project, aArgs["library"] );
-                     return TOOL_RESULT::Data( footprintJson( session.Footprint( aArgs["footprint"] ), true ) );
+                     JSON                   out = footprintJson( session.Footprint( aArgs["footprint"] ), true );
+                     session.SetCurrent( aArgs["footprint"] ); // the viewer shows what the agent looks at
+                     return TOOL_RESULT::Data( out );
                  } } );
 
     tools.Add(
@@ -1194,6 +1196,7 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
                      AGENT_PROJECT&         project = aServices.Sessions().Resolve( aArgs );
                      FOOTPRINT_LIB_SESSION& session = FootprintLibSession( project, aArgs["library"] );
                      FOOTPRINT&             footprint = session.Footprint( aArgs["footprint"] );
+                     session.SetCurrent( aArgs["footprint"] ); // the viewer shows what the agent looks at
 
                      // Plotted on a page, so placed well inside it.
                      const VECTOR2I         offset( PcbIu( 100 ), PcbIu( 100 ) );

@@ -83,6 +83,38 @@ def test_close_project_with_open_viewer( isolated_env, tmp_path ):
         stop( proc )
 
 
+@pytest.mark.skipif( not os.environ.get( "DISPLAY" ), reason="needs a display (run under xvfb-run)" )
+def test_viewers_show_what_the_agent_looks_at( isolated_env, tmp_path ):
+    """Found taking README screenshots: the schematic viewer drew hidden text, and the symbol and
+    footprint viewers stayed empty after a capture (only edits made a symbol current)."""
+    env = dict( isolated_env, AGENTIC_TEST_HOOKS="1" )
+    proc, url, token = start_http_server( [ KICAD_BIN, "--mcp-port", "0" ], env )
+
+    try:
+        c = HttpClient( url, token )
+        c.initialize()
+        led_board( c, tmp_path / "look" )
+        ok( c, "lib_create", { "type": "symbol", "name": "Parts" } )
+        ok( c, "sym_create", { "library": "Parts", "name": "PART", "reference": "U" } )
+        ok( c, "sym_pins_set", { "library": "Parts", "symbol": "PART", "pins": [ { "number": "1", "name": "A" } ] } )
+        ok( c, "sym_create", { "library": "Parts", "name": "OTHER", "reference": "U" } )
+        ok( c, "lib_create", { "type": "footprint", "name": "Fp" } )
+        ok( c, "fp_create", { "library": "Fp", "name": "ONE", "type": "smd" } )
+        ok( c, "fp_pads_add", { "library": "Fp", "footprint": "ONE", "type": "smd", "shape": "rect", "size": 1,
+                                "pads": [ { "number": "1", "x": 0, "y": 0 } ] } )
+        ok( c, "fp_create", { "library": "Fp", "name": "TWO", "type": "smd" } )
+
+        ok( c, "sym_capture", { "library": "Parts", "symbol": "PART" } )
+        ok( c, "fp_capture", { "library": "Fp", "footprint": "ONE" } )
+        viewers = { v["program"]: v for v in ok( c, "debug_ui_state" )["viewers"] }
+
+        assert viewers["sch"]["hiddenTextShown"] is False
+        assert viewers["sym"]["symbol"] == "PART" and viewers["sym"]["pinRows"] == 1
+        assert viewers["fp"]["footprint"] == "ONE" and viewers["fp"]["padRows"] == 1
+    finally:
+        stop( proc )
+
+
 # F6 ---------------------------------------------------------------------------------------------
 
 def test_sch_move_uses_each_calls_target( client, tmp_path ):

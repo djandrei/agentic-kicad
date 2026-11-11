@@ -29,6 +29,8 @@
 #include <gal/gal_display_options.h>
 #include <gal_display_options_common.h>
 #include <sch_draw_panel.h>
+#include <sch_painter.h>
+#include <sch_render_settings.h>
 #include <sch_item.h>
 #include <sch_screen.h>
 #include <sch_sheet.h>
@@ -70,6 +72,30 @@ namespace
             m_canvas = new SCH_DRAW_PANEL( this, wxID_ANY, wxDefaultPosition, wxSize( 900, 700 ), m_galOptions,
                                            EDA_DRAW_PANEL_GAL::GAL_TYPE_OPENGL );
             SetCentralView( m_canvas );
+
+            // As the editor shows a schematic: the painter's defaults also draw hidden fields,
+            // hidden pins and the pins' electrical types.
+            renderSettings()->m_ShowHiddenPins = false;
+            renderSettings()->m_ShowHiddenFields = false;
+            renderSettings()->m_ShowPinsElectricalType = false;
+
+            // The sheet put on the canvas before the frame is on screen is not drawn: put it on
+            // again whenever the viewer is shown (the view is kept).
+            Bind( wxEVT_SHOW,
+                  [this]( wxShowEvent& aEvent )
+                  {
+                      if( aEvent.IsShown() )
+                      {
+                          CallAfter(
+                                  [this]()
+                                  {
+                                      if( m_shown )
+                                          showScreen( m_shown, false );
+                                  } );
+                      }
+
+                      aEvent.Skip();
+                  } );
 
             m_hierarchy = new wxTreeCtrl( this, wxID_ANY, wxDefaultPosition, wxSize( 220, 200 ),
                                           wxTR_DEFAULT_STYLE | wxTR_HIDE_ROOT | wxTR_SINGLE );
@@ -129,6 +155,8 @@ namespace
         nlohmann::json UiState() const override
         {
             nlohmann::json state = AGENT_VIEWER::UiState();
+            state["hiddenTextShown"] = renderSettings()->m_ShowHiddenPins || renderSettings()->m_ShowHiddenFields
+                                       || renderSettings()->m_ShowPinsElectricalType;
             nlohmann::json viewItems = 0;
             size_t         count = 0;
 
@@ -329,6 +357,11 @@ namespace
 
             m_canvas->StartDrawing();
             m_canvas->ForceRefresh();
+        }
+
+        SCH_RENDER_SETTINGS* renderSettings() const
+        {
+            return static_cast<SCH_RENDER_SETTINGS*>( m_canvas->GetView()->GetPainter()->GetSettings() );
         }
 
         bool recentlyLookedAround() const

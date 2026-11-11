@@ -22,6 +22,7 @@
 #include <agentic/sch/sim_tools.h>
 #include <agentic/sch/sim_viewer.h>
 
+#include <sim/spice_value.h>
 #include <widgets/mathplot.h>
 
 #include <wx/listctrl.h>
@@ -35,6 +36,27 @@ namespace AGENTIC
 
 namespace
 {
+
+    /// mathplot's scales leave their tick labels empty (the simulator frame's own scales format
+    /// them): label each tick with an SI-prefixed number (500m, 1k).
+    template <class SCALE>
+    class LABELLED_SCALE : public SCALE
+    {
+    public:
+        using SCALE::SCALE;
+
+    private:
+        void formatLabels() override
+        {
+            for( mpScaleBase::TICK_LABEL& label : SCALE::m_tickLabels )
+            {
+                label.label = std::abs( label.pos ) < 1e-15 ? wxString( wxS( "0" ) )
+                                                            : SPICE_VALUE( label.pos ).ToSpiceString();
+                label.visible = true;
+            }
+        }
+    };
+
 
     class SIM_VIEWER : public AGENT_VIEWER
     {
@@ -97,11 +119,11 @@ namespace
             mpScaleXBase* axisX = nullptr;
 
             if( m_logX )
-                axisX = new mpScaleXLog( wxS( "frequency (Hz)" ), mpALIGN_BOTTOM );
+                axisX = new LABELLED_SCALE<mpScaleXLog>( wxS( "frequency (Hz)" ), mpALIGN_BOTTOM );
             else
-                axisX = new mpScaleX( wx( state.xAxis.empty() ? "x" : state.xAxis ), mpALIGN_BOTTOM );
+                axisX = new LABELLED_SCALE<mpScaleX>( wx( state.xAxis.empty() ? "x" : state.xAxis ), mpALIGN_BOTTOM );
 
-            mpScaleY* axisY = new mpScaleY( wxEmptyString, mpALIGN_LEFT );
+            mpScaleY* axisY = new LABELLED_SCALE<mpScaleY>( wxEmptyString, mpALIGN_LEFT );
             m_plot->AddLayer( axisX, false );
             m_plot->AddLayer( axisY, false );
 

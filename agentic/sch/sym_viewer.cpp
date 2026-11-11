@@ -136,6 +136,25 @@ namespace
             redraw( true );
         }
 
+        // A capture or a read makes a symbol current without a commit: show it after the call.
+        void OnToolEnd( const std::string& aTool, const nlohmann::json& aArgs, bool aOk, double aMillis,
+                        const std::string& aSummary ) override
+        {
+            AGENT_VIEWER::OnToolEnd( aTool, aArgs, aOk, aMillis, aSummary );
+
+            if( !m_session )
+            {
+                for( DOC_SESSION* session : Project().Sessions() )
+                {
+                    if( shows( *session ) )
+                        m_session = static_cast<SYMBOL_LIB_SESSION*>( session );
+                }
+            }
+
+            if( m_session && m_session->CurrentSymbol() != m_shownName )
+                redraw( true );
+        }
+
     protected:
         bool shows( const DOC_SESSION& aSession ) const override
         {
