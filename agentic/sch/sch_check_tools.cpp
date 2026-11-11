@@ -131,6 +131,17 @@ namespace
     }
 
 
+    /// The drawing sheet model is one for the whole process: load this schematic's sheet before
+    /// anything reads it (capture, plot, ERC), or the sheet of the project used last is used.
+    void loadDrawingSheet( SCHEMATIC& aSch )
+    {
+        wxString msg;
+        DS_DATA_MODEL::GetTheInstance().LoadFromName( aSch.Settings().m_SchDrawingSheetFileName,
+                                                      wx( aSch.Project().GetProjectPath().ToStdString( wxConvUTF8 ) ),
+                                                      &aSch.Project(), { aSch.GetEmbeddedFiles() }, &msg );
+    }
+
+
     void initRenderSettings( SCH_RENDER_SETTINGS& aSettings, SCHEMATIC& aSch, bool aDrawingSheet )
     {
         aSettings.LoadColors( ::GetColorSettings( wxEmptyString ) );
@@ -146,13 +157,7 @@ namespace
         aSettings.SetGapLengthRatio( aSch.Settings().m_DashedLineGapRatio );
 
         if( aDrawingSheet )
-        {
-            wxString msg;
-            DS_DATA_MODEL::GetTheInstance().LoadFromName(
-                    aSch.Settings().m_SchDrawingSheetFileName,
-                    wx( aSch.Project().GetProjectPath().ToStdString( wxConvUTF8 ) ), &aSch.Project(),
-                    { aSch.GetEmbeddedFiles() }, &msg );
-        }
+            loadDrawingSheet( aSch );
     }
 
 
@@ -366,6 +371,7 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
 
                      AGENT_PROGRESS_REPORTER progress( aContext, aServices.ProgressSink() );
                      ERC_TESTER              tester( &sch );
+                     loadDrawingSheet( sch );
                      auto                    sheet = drawingSheetProxy( sch );
                      tester.RunTests( sheet.get(), nullptr, nullptr, &sch.Project(), &progress );
 

@@ -56,6 +56,7 @@
 #include <wx/filename.h>
 
 #include <cmath>
+#include <regex>
 
 
 namespace AGENTIC
@@ -492,7 +493,13 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
 
                      for( BOARD_STACKUP_ITEM* item : bds.GetStackupDescriptor().GetList() )
                      {
-                         layers.push_back( { { "name", utf8( item->GetLayerName() ) },
+                         // Board layers by their board name; dielectrics are numbered from the top.
+                         const std::string name =
+                                 item->GetBrdLayerId() != UNDEFINED_LAYER
+                                         ? PcbLayerName( s.Board(), item->GetBrdLayerId() )
+                                         : "Dielectric " + std::to_string( item->GetDielectricLayerId() );
+
+                         layers.push_back( { { "name", name },
                                              { "type", utf8( item->GetTypeName() ) },
                                              { "thickness", mm( item->GetThickness() ) },
                                              { "material", utf8( item->GetMaterial() ) } } );
@@ -602,7 +609,14 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                          }
 
                          if( reporter.HasMessageOfSeverity( RPT_SEVERITY_ERROR ) )
-                             throw TOOL_ERROR( "The custom rules have errors:\n" + utf8( reporter.GetMessages() ) );
+                         {
+                             // The parser links each message to its place for the GUI: <a href='3:1'>text</a>.
+                             static const std::regex link( "<a href='([0-9]+):([0-9]+)'>(.*?)</a>" );
+                             const std::string       plain = std::regex_replace( utf8( reporter.GetMessages() ), link,
+                                                                                 "line $1, column $2: $3" );
+
+                             throw TOOL_ERROR( "The custom rules have errors:\n" + plain );
+                         }
                      }
 
                      JSON result = project->Mutate(

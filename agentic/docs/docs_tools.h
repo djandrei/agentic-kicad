@@ -37,7 +37,8 @@ void RegisterDocsTools( AGENT_SERVICES& aServices, const std::string& aInstructi
 /// (minor version 99), "<major>.0" otherwise.
 std::string DocsVersion();
 
-/// $AGENTIC_KICAD_DOCS_CACHE, or $XDG_CACHE_HOME/agentic-kicad/docs (~/.cache when unset).
+/// $AGENTIC_KICAD_DOCS_CACHE, or agentic-docs in KiCad's cache folder (PATHS::GetUserCachePath(),
+/// which honours $KICAD_CACHE_HOME).
 std::filesystem::path DocsCacheRoot();
 
 } // namespace AGENTIC

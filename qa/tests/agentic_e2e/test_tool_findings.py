@@ -30,7 +30,7 @@ sys.path.insert( 0, os.path.dirname( __file__ ) )
 
 from client import HttpClient, StdioClient  # noqa: E402
 from conftest import KICAD_BIN, KICAD_CLI, start_http_server, stop  # noqa: E402
-from test_stage4_schematic import new_project  # noqa: E402
+from test_stage4_schematic import build_led_circuit, new_project  # noqa: E402
 from test_stage6_pcb import fail, led_board, ok  # noqa: E402
 from test_stage10_simulator import rc_lowpass  # noqa: E402
 
@@ -219,3 +219,92 @@ def test_multi_unit_symbol_reference( client, tmp_path ):
     ok( client, "sch_symbol_set", { "item": "U1", "value": "DUO-2", "fields": { "MPN": "X1" } } )
     assert { u["value"] for u in ok( client, "sch_query", { "reference": "U1" } )["items"] } == { "DUO-2" }
     assert "unit" in fail( client, "sch_symbol_set", { "item": "U1", "unit": 2 } )
+
+
+# F1 ---------------------------------------------------------------------------------------------
+
+def test_docs_cache_follows_kicad_cache_home( isolated_env, tmp_path ):
+    env = dict( isolated_env, KICAD_CACHE_HOME=str( tmp_path / "cache" ) )
+    env.pop( "AGENTIC_KICAD_DOCS_CACHE", None )
+    c = StdioClient( [ KICAD_CLI, "mcp", "--stdio" ], env=env )
+
+    try:
+        c.initialize()
+        assert ok( c, "docs_status" )["cache"].startswith( str( tmp_path / "cache" ) )
+    finally:
+        c.close()
+
+
+# O2 ---------------------------------------------------------------------------------------------
+
+def test_symbol_body_fits_top_and_bottom_pin_names( client, tmp_path ):
+    ok( client, "project_create", { "path": str( tmp_path / "body" ) } )
+    ok( client, "lib_create", { "type": "symbol", "name": "Parts" } )
+    ok( client, "sym_create", { "library": "Parts", "name": "PWR", "reference": "U" } )
+    sym = ok( client, "sym_pins_set", { "library": "Parts", "symbol": "PWR", "pins": [
+        { "number": "1", "name": "VDD_ANALOG", "type": "power_in", "side": "top" },
+        { "number": "2", "name": "GND_ANALOG", "type": "power_in", "side": "bottom" } ] } )
+    ys = sorted( p["position"]["y"] for p in sym["pins"] )
+
+    # Pin ends sit a pin length (2.54) outside the body; the names (10 characters of 1.27 mm text)
+    # must fit between the two body edges without meeting.
+    assert ( ys[1] - ys[0] ) - 2 * 2.54 >= 2 * 10 * 1.27
+
+
+# O3 ---------------------------------------------------------------------------------------------
+
+def test_footprint_text_positions( client, tmp_path ):
+    ok( client, "project_create", { "path": str( tmp_path / "fptext" ) } )
+    ok( client, "lib_create", { "type": "footprint", "name": "Fp" } )
+    ok( client, "fp_create", { "library": "Fp", "name": "PART", "type": "smd" } )
+    ok( client, "fp_field_set", { "library": "Fp", "footprint": "PART", "referencePosition": { "x": 0, "y": -2.5 },
+                                  "valuePosition": { "x": 0, "y": 2.5 }, "textSize": 0.8 } )
+    got = ok( client, "fp_get", { "library": "Fp", "footprint": "PART" } )
+    assert got["referencePosition"] == { "x": 0.0, "y": -2.5 } and got["valuePosition"] == { "x": 0.0, "y": 2.5 }
+    assert got["textSize"] == 0.8
+
+
+# O5 ---------------------------------------------------------------------------------------------
+
+def test_drawing_sheet_of_one_project_does_not_leak_into_another( client, tmp_path ):
+    """KiCad keeps one drawing sheet model per process: ERC must load its own project's sheet."""
+    new_project( client, tmp_path / "with_sheet" )
+    build_led_circuit( client )
+    ok( client, "text_vars_set", { "vars": { "BUILD": "7" } } )
+    ok( client, "ds_create", { "file": "my.kicad_wks" } )
+    ok( client, "ds_item_add", { "file": "my.kicad_wks", "type": "text", "text": "build ${BUILD}",
+                                 "start": { "x": 50, "y": 30 } } )
+    ok( client, "sch_drawing_sheet_set", { "drawingSheet": "my.kicad_wks" } )
+    assert ok( client, "sch_erc" )["violations"] == []
+    ok( client, "sch_capture" )  # loads this project's sheet (${BUILD}) into the shared model
+
+    new_project( client, tmp_path / "plain" )  # no BUILD variable here
+    build_led_circuit( client )
+    assert [ v["type"] for v in ok( client, "sch_erc" )["violations"] ] == []
+
+
+# O8 ---------------------------------------------------------------------------------------------
+
+def test_coupled_line_synthesis_needs_its_targets( client, tmp_path ):
+    """zDiff is a result of coupled lines; synthesis without z0Odd/z0Even returned nothing, silently."""
+    ok( client, "project_create", { "path": str( tmp_path / "calc" ) } )
+    assert "z0Odd" in fail( client, "calc_run", { "calculator": "transmission_line", "inputs": {
+        "type": "coupled_microstrip", "mode": "synthesize",
+        "parameters": { "zDiff": 90, "h": 0.2, "t": 0.035, "epsilonR": 4.5, "frequency": 1e9 } } } )
+
+    pair = ok( client, "calc_run", { "calculator": "transmission_line", "inputs": {
+        "type": "coupled_microstrip", "mode": "synthesize",
+        "parameters": { "z0Odd": 45, "z0Even": 65, "h": 0.2, "t": 0.035, "epsilonR": 4.5, "frequency": 4.8e8 } } } )
+    assert abs( pair["outputs"]["results"]["zDiff"] - 90 ) < 0.5
+
+
+# O9, O10 ----------------------------------------------------------------------------------------
+
+def test_stackup_names_and_plain_rule_errors( client, tmp_path ):
+    led_board( client, tmp_path / "stackup" )
+    ok( client, "pcb_stackup_set", { "copperLayers": 4 } )
+    names = [ layer["name"] for layer in ok( client, "pcb_stackup_get" )["layers"] ]
+    assert all( names ) and [ n for n in names if n.endswith( ".Cu" ) ] == [ "F.Cu", "In1.Cu", "In2.Cu", "B.Cu" ]
+
+    message = fail( client, "pcb_rules_set", { "customRules": "(version 1)\n(rule a (constraint clearance (min 1mm))\n" } )
+    assert "<a" not in message and "line" in message

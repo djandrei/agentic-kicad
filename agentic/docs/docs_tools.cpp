@@ -24,6 +24,7 @@
 #include <agentic/docs/docs_tools.h>
 
 #include <build_version.h>
+#include <paths.h>
 
 #include <wx/datetime.h>
 
@@ -120,16 +121,8 @@ std::filesystem::path DocsCacheRoot()
     if( const char* overridden = std::getenv( "AGENTIC_KICAD_DOCS_CACHE" ); overridden && *overridden )
         return std::filesystem::path( overridden );
 
-    std::filesystem::path base;
-
-    if( const char* xdg = std::getenv( "XDG_CACHE_HOME" ); xdg && *xdg )
-        base = xdg;
-    else if( const char* home = std::getenv( "HOME" ); home && *home )
-        base = std::filesystem::path( home ) / ".cache";
-    else
-        base = std::filesystem::temp_directory_path();
-
-    return base / "agentic-kicad" / "docs";
+    // KiCad's own cache folder, so KICAD_CACHE_HOME applies as to the rest of KiCad.
+    return std::filesystem::path( PATHS::GetUserCachePath().utf8_string() ) / "agentic-docs";
 }
 
 

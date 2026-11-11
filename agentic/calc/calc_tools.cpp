@@ -237,6 +237,21 @@ namespace
 
         const bool synthesize = aIn.value( "mode", "analyse" ) == "synthesize";
 
+        // Synthesis solves for the targets it reads; without them it returns nothing, silently.
+        if( synthesize )
+        {
+            const bool coupled = type.rfind( "coupled_", 0 ) == 0;
+
+            if( coupled && ( !params.contains( "z0Odd" ) || !params.contains( "z0Even" ) ) )
+            {
+                throw TOOL_ERROR( "Coupled lines synthesize from z0Odd and z0Even (zDiff = 2 z0Odd); give both, "
+                                  "e.g. z0Odd 45 and z0Even 75 for a 90 ohm pair." );
+            }
+
+            if( !coupled && !params.contains( "z0" ) )
+                throw TOOL_ERROR( "Synthesis needs the target impedance z0." );
+        }
+
         // The result maps are filled when they are asked for: after the calculation.
         if( synthesize && !line->Synthesize( SYNTHESIZE_OPTS::DEFAULT ) )
             throw TOOL_ERROR( "The synthesis did not converge; check z0 and the fixed dimensions." );

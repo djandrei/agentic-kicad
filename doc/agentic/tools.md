@@ -1217,7 +1217,7 @@ Write an SVG of a footprint (origin at the SVG origin), like kicad-cli fp export
 
 ### `fp_field_set`
 
-Set a footprint's description, keywords, type (smd, through_hole, other), reference and value text, attributes (excludeFromBom, excludeFromPos, boardOnly) and user fields {name: text} (empty text removes a field).
+Set a footprint's description, keywords, type (smd, through_hole, other), reference and value text, their positions (mm from the footprint origin) and text size, attributes (excludeFromBom, excludeFromPos, boardOnly) and user fields {name: text} (empty text removes a field).
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -1231,8 +1231,11 @@ Set a footprint's description, keywords, type (smd, through_hole, other), refere
 | `force` | boolean |  |  |
 | `keywords` | string |  |  |
 | `reference` | string |  |  |
+| `referencePosition` | object or array |  | {x, y} in mm (or [x, y]). |
+| `textSize` | number or string |  | Reference and value text height, mm. |
 | `type` | smd \| through_hole \| other |  |  |
 | `value` | string |  |  |
+| `valuePosition` | object or array |  | {x, y} in mm (or [x, y]). |
 
 ### `fp_get`
 

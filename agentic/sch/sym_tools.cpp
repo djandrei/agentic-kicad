@@ -565,8 +565,27 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
                                           longest = std::max( longest, spec.json.value( "name", "" ).size() );
                                   }
 
-                                  // Body half sizes, on the grid, wide enough for two names.
-                                  const int halfH = pitch * static_cast<int>( ( rows + 1 ) / 2 + 1 );
+                                  size_t longestTopBottom = 0;
+
+                                  for( const char* side : { "top", "bottom" } )
+                                  {
+                                      for( const SPEC& spec : sides[side] )
+                                      {
+                                          longestTopBottom =
+                                                  std::max( longestTopBottom, spec.json.value( "name", "" ).size() );
+                                      }
+                                  }
+
+                                  // Body half sizes, on the grid, wide enough for two names; the top and
+                                  // bottom pins' names run vertically, so they set the height the same way.
+                                  int halfH = pitch * static_cast<int>( ( rows + 1 ) / 2 + 1 );
+
+                                  if( longestTopBottom > 0 )
+                                  {
+                                      halfH = std::max( halfH,
+                                                        pitch * static_cast<int>( ( longestTopBottom + 2 ) / 2 + 1 ) );
+                                  }
+
                                   const int halfW = std::max( pitch * static_cast<int>( ( cols + 1 ) / 2 + 1 ),
                                                               pitch * static_cast<int>( ( longest + 2 ) / 2 + 1 ) );
 

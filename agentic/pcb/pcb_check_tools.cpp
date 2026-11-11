@@ -294,15 +294,44 @@ TOOL_RESULT PcbCapturePng( AGENT_PROJECT& aProject, BOARD& aBoard, const BOX2I& 
     const fs::path file = aProject.Root() / ".agentic" / "captures" / "board.png";
     fs::create_directories( file.parent_path() );
 
-    std::unique_ptr<PLOTTER> plotter( StartPlotBoard( &aBoard, &opts, aLayers.front(), wxS( "capture" ),
-                                                      wx( file.string() ), wxEmptyString, wxEmptyString ) );
+    {
+        // Plot only the area: the page is the area (at least KiCad's smallest page) and its corner
+        // the plot origin. Plotting the whole page at the area's resolution took seconds for a
+        // small area (a 14000 x 10000 picture for 10 mm at 900 px). The board's own page and
+        // auxiliary origin are put back.
+        BOARD_DESIGN_SETTINGS& bds = aBoard.GetDesignSettings();
+        const PAGE_INFO        savedPage = aBoard.GetPageSettings();
+        const VECTOR2I         savedAuxOrigin = bds.GetAuxOrigin();
 
-    if( !plotter )
-        throw TOOL_ERROR( "Plotting the board failed." );
+        struct RESTORE
+        {
+            BOARD&           board;
+            const PAGE_INFO& page;
+            const VECTOR2I&  auxOrigin;
 
-    PlotBoardLayers( &aBoard, plotter.get(), aLayers, opts );
-    plotter->EndPlot();
-    plotter.reset();
+            ~RESTORE()
+            {
+                board.SetPageSettings( page );
+                board.GetDesignSettings().SetAuxOrigin( auxOrigin );
+            }
+        } restore{ aBoard, savedPage, savedAuxOrigin };
+
+        PAGE_INFO page( PAGE_SIZE_TYPE::User );
+        page.SetWidthMils( pcbIUScale.IUTomm( aArea.GetWidth() ) / 0.0254 );
+        page.SetHeightMils( pcbIUScale.IUTomm( aArea.GetHeight() ) / 0.0254 );
+        aBoard.SetPageSettings( page );
+        bds.SetAuxOrigin( aArea.GetOrigin() );
+        opts.SetUseAuxOrigin( true );
+
+        std::unique_ptr<PLOTTER> plotter( StartPlotBoard( &aBoard, &opts, aLayers.front(), wxS( "capture" ),
+                                                          wx( file.string() ), wxEmptyString, wxEmptyString ) );
+
+        if( !plotter )
+            throw TOOL_ERROR( "Plotting the board failed." );
+
+        PlotBoardLayers( &aBoard, plotter.get(), aLayers, opts );
+        plotter->EndPlot();
+    }
 
     wxImage image;
 
@@ -310,14 +339,12 @@ TOOL_RESULT PcbCapturePng( AGENT_PROJECT& aProject, BOARD& aBoard, const BOX2I& 
         throw TOOL_ERROR( "Reading the plotted picture failed." );
 
     const double scale = dpi / 25.4;
-    wxRect       crop( KiROUND( pcbIUScale.IUTomm( aArea.GetLeft() ) * scale ),
-                       KiROUND( pcbIUScale.IUTomm( aArea.GetTop() ) * scale ),
-                       KiROUND( pcbIUScale.IUTomm( aArea.GetWidth() ) * scale ),
+    wxRect       crop( 0, 0, KiROUND( pcbIUScale.IUTomm( aArea.GetWidth() ) * scale ),
                        KiROUND( pcbIUScale.IUTomm( aArea.GetHeight() ) * scale ) );
     crop.Intersect( wxRect( 0, 0, image.GetWidth(), image.GetHeight() ) );
 
     if( crop.IsEmpty() )
-        throw TOOL_ERROR( "The area is outside the page." );
+        throw TOOL_ERROR( "The area is empty." );
 
     image = image.GetSubImage( crop );
 

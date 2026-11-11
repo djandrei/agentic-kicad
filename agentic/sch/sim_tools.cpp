@@ -579,21 +579,50 @@ namespace
                           KIFONT::METRICS::Default() );
         };
 
-        for( int i = 0; i <= 5; ++i )
+        // Grid lines on round values: 1, 2 or 5 times a power of ten, about five per axis; a log
+        // axis on whole decades.
+        auto ticks = []( double aMin, double aMax, bool aDecades )
         {
-            const double gx = xMin + ( xMax - xMin ) * i / 5;
-            const double gy = yMin + ( yMax - yMin ) * i / 5;
-            const double sx = left + plotW * i / 5;
-            const double sy = top + plotH - plotH * i / 5;
+            std::vector<double> out;
+            double              step = 1;
+
+            if( !aDecades || aMax - aMin < 2 )
+            {
+                const double raw = ( aMax - aMin ) / 5;
+                const double magnitude = std::pow( 10, std::floor( std::log10( raw ) ) );
+                const double normal = raw / magnitude;
+                step = ( normal < 1.5 ? 1 : normal < 3 ? 2 : normal < 7 ? 5 : 10 ) * magnitude;
+            }
+            else
+            {
+                step = std::max( 1.0, std::ceil( ( aMax - aMin ) / 8 ) );
+            }
+
+            for( double v = std::ceil( aMin / step ) * step; v <= aMax + step * 1e-9; v += step )
+                out.push_back( std::fabs( v ) < step * 1e-9 ? 0.0 : v );
+
+            return out;
+        };
+
+        // Each label sets the plotter's colour to the ink: set the grey per line.
+        for( double gx : ticks( xMin, xMax, aLogX ) )
+        {
+            const double sx = left + ( gx - xMin ) / ( xMax - xMin ) * plotW;
 
             plotter.SetColor( grey );
             plotter.MoveTo( px( sx, top ) );
             plotter.FinishTo( px( sx, top + plotH ) );
-            plotter.MoveTo( px( left, sy ) );
-            plotter.FinishTo( px( left + plotW, sy ) );
-
             text( px( sx, top + plotH + 6 ), engineering( aLogX ? std::pow( 10, gx ) : gx ), GR_TEXT_H_ALIGN_CENTER,
                   GR_TEXT_V_ALIGN_TOP );
+        }
+
+        for( double gy : ticks( yMin, yMax, false ) )
+        {
+            const double sy = top + ( yMax - gy ) / ( yMax - yMin ) * plotH;
+
+            plotter.SetColor( grey );
+            plotter.MoveTo( px( left, sy ) );
+            plotter.FinishTo( px( left + plotW, sy ) );
             text( px( left - 6, sy ), engineering( gy ), GR_TEXT_H_ALIGN_RIGHT, GR_TEXT_V_ALIGN_CENTER );
         }
 

@@ -225,6 +225,9 @@ namespace
 
         out["reference"] = utf8( aFootprint.GetReference() );
         out["value"] = utf8( aFootprint.GetValue() );
+        out["referencePosition"] = PcbPointJson( aFootprint.Reference().GetFPRelativePosition() );
+        out["valuePosition"] = PcbPointJson( aFootprint.Value().GetFPRelativePosition() );
+        out["textSize"] = mm( aFootprint.Reference().GetTextHeight() );
         out["excludeFromBom"] = aFootprint.IsExcludedFromBOM();
         out["excludeFromPos"] = aFootprint.IsExcludedFromPosFiles();
         out["boardOnly"] = aFootprint.IsBoardOnly();
@@ -900,14 +903,19 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
 
     tools.Add( { "fp_field_set",
                  "Set a footprint's description, keywords, type (smd, through_hole, other), reference and value text, "
-                 "attributes (excludeFromBom, excludeFromPos, boardOnly) and user fields {name: text} (empty text "
-                 "removes a field).",
+                 "their positions (mm from the footprint origin) and text size, attributes (excludeFromBom, "
+                 "excludeFromPos, boardOnly) and user fields {name: text} (empty text removes a field).",
                  "fp",
                  fpSchema( { { "description", { { "type", "string" } } },
                              { "keywords", { { "type", "string" } } },
                              { "type", { { "type", "string" }, { "enum", { "smd", "through_hole", "other" } } } },
                              { "reference", { { "type", "string" } } },
                              { "value", { { "type", "string" } } },
+                             { "referencePosition", POINT },
+                             { "valuePosition", POINT },
+                             { "textSize",
+                               { { "type", { "number", "string" } },
+                                 { "description", "Reference and value text height, mm." } } },
                              { "excludeFromBom", { { "type", "boolean" } } },
                              { "excludeFromPos", { { "type", "boolean" } } },
                              { "boardOnly", { { "type", "boolean" } } },
@@ -929,6 +937,33 @@ void RegisterFootprintEditorTools( AGENT_SERVICES& aServices )
 
                                          if( aArgs.contains( "value" ) )
                                              aFootprint.SetValue( wx( aArgs["value"] ) );
+
+                                         if( aArgs.contains( "referencePosition" ) )
+                                         {
+                                             aFootprint.Reference().SetFPRelativePosition(
+                                                     point( aArgs["referencePosition"], "referencePosition" ) );
+                                         }
+
+                                         if( aArgs.contains( "valuePosition" ) )
+                                         {
+                                             aFootprint.Value().SetFPRelativePosition(
+                                                     point( aArgs["valuePosition"], "valuePosition" ) );
+                                         }
+
+                                         if( aArgs.contains( "textSize" ) )
+                                         {
+                                             const int size = PcbLength( aArgs["textSize"], "textSize" );
+
+                                             if( size <= 0 )
+                                                 throw TOOL_ERROR( "textSize must be positive." );
+
+                                             // KiCad's default stroke is 15% of the height.
+                                             for( PCB_FIELD* field : { &aFootprint.Reference(), &aFootprint.Value() } )
+                                             {
+                                                 field->SetTextSize( VECTOR2I( size, size ) );
+                                                 field->SetTextThickness( size * 15 / 100 );
+                                             }
+                                         }
 
                                          int attributes = aFootprint.GetAttributes();
 
