@@ -186,18 +186,22 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
     tools.Add(
             { "pcb_route",
               "Route a track with KiCad's interactive router (PNS) from a pad to a pad, through optional "
-              "waypoints, on a copper layer both pads are on (default: the start pad's side): walkaround "
-              "(default) goes around obstacles, shove pushes other tracks aside. Width comes from the net class. "
-              "Returns the tracks made, whether the route reached the end, and the ratsnest delta.",
+              "waypoints, on a copper layer the start pad is on (default: its side): walkaround (default) goes "
+              "around obstacles, shove pushes other tracks aside. A waypoint with a layer places a via there and "
+              "continues on that layer; the end pad must be on the last layer. Width and via size come from the "
+              "net class. Returns the tracks and vias made, whether the route reached the end, and the ratsnest "
+              "delta.",
               "pcb",
-              pcbSchema(
-                      { { "from", { { "type", "string" }, { "description", "Start pad, e.g. U1.3." } } },
-                        { "to", { { "type", "string" }, { "description", "End pad." } } },
-                        { "waypoints", { { "type", "array" }, { "description", "Points {x, y} to pass through." } } },
-                        { "layer", { { "type", "string" } } },
-                        { "mode", { { "type", "string" }, { "enum", { "walkaround", "shove" } } } },
-                        { "width", { { "type", { "number", "string" } } } } },
-                      { "from", "to" } ),
+              pcbSchema( { { "from", { { "type", "string" }, { "description", "Start pad, e.g. U1.3." } } },
+                           { "to", { { "type", "string" }, { "description", "End pad." } } },
+                           { "waypoints",
+                             { { "type", "array" },
+                               { "description", "Points {x, y} to pass through; {x, y, layer} changes to that copper "
+                                                "layer with a via at the point." } } },
+                           { "layer", { { "type", "string" } } },
+                           { "mode", { { "type", "string" }, { "enum", { "walkaround", "shove" } } } },
+                           { "width", { { "type", { "number", "string" } } } } },
+                         { "from", "to" } ),
               [&aServices]( const JSON& aArgs, TOOL_CONTEXT& aContext )
               {
                   AGENT_PROJECT*     project = nullptr;
@@ -212,16 +216,34 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                   if( aArgs.contains( "timeoutSeconds" ) )
                       aContext.SetTimeout( aArgs["timeoutSeconds"] );
 
-                  std::vector<VECTOR2I> waypoints;
-
-                  for( const JSON& point : aArgs.value( "waypoints", JSON::array() ) )
-                      waypoints.push_back( PcbPoint( board, point, "waypoints" ) );
-
                   const PCB_LAYER_ID layer =
                           PcbLayer( board, aArgs.value( "layer", fromPad->IsOnLayer( F_Cu ) ? "F.Cu" : "B.Cu" ) );
 
+                  // Each waypoint, with the layer the route is on after it (a layer change puts a via there).
+                  std::vector<std::pair<VECTOR2I, PCB_LAYER_ID>> waypoints;
+                  PCB_LAYER_ID                                   endLayer = layer;
+
+                  for( const JSON& point : aArgs.value( "waypoints", JSON::array() ) )
+                  {
+                      if( point.is_object() && point.contains( "layer" ) )
+                      {
+                          const PCB_LAYER_ID next = PcbLayer( board, point["layer"] );
+
+                          if( !IsCopperLayer( next ) )
+                              throw TOOL_ERROR( "A waypoint's layer must be a copper layer." );
+
+                          if( next == endLayer )
+                              throw TOOL_ERROR( "A waypoint changes to " + PcbLayerName( board, next )
+                                                + ", which the route is already on." );
+
+                          endLayer = next;
+                      }
+
+                      waypoints.emplace_back( PcbPoint( board, point, "waypoints" ), endLayer );
+                  }
+
                   requirePadOnLayer( board, fromPad, aArgs["from"], layer );
-                  requirePadOnLayer( board, toPad, aArgs["to"], layer );
+                  requirePadOnLayer( board, toPad, aArgs["to"], endLayer );
 
                   JSON result = PcbMutate(
                           *project, s,
@@ -252,11 +274,38 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                                   throw TOOL_ERROR( "The router cannot start at " + aArgs["from"].get<std::string>()
                                                     + ": " + utf8( run.router.FailureReason() ) );
 
-                              // Each waypoint fixes the route so far; the end pad finishes it.
-                              for( const VECTOR2I& waypoint : waypoints )
+                              // Each waypoint fixes the route so far; the end pad finishes it. A layer change
+                              // is placed as the router tool places a via: the layer pair, via mode, fix, switch.
+                              PCB_LAYER_ID current = layer;
+
+                              for( const auto& [waypoint, after] : waypoints )
                               {
+                                  if( after != current )
+                                  {
+                                      PNS::SIZES_SETTINGS viaSizes( run.router.Sizes() );
+                                      viaSizes.ClearLayerPairs();
+                                      viaSizes.AddLayerPair( run.iface.GetPNSLayerFromBoardLayer( current ),
+                                                             run.iface.GetPNSLayerFromBoardLayer( after ) );
+                                      run.router.UpdateSizes( viaSizes );
+
+                                      if( !run.router.IsPlacingVia() )
+                                          run.router.ToggleViaPlacement();
+                                  }
+
                                   run.router.Move( waypoint, nullptr );
                                   run.router.FixRoute( waypoint, nullptr, false, false );
+
+                                  if( after != current )
+                                  {
+                                      if( !run.router.SwitchLayer( run.iface.GetPNSLayerFromBoardLayer( after ) ) )
+                                      {
+                                          run.router.StopRouting();
+                                          throw TOOL_ERROR( "The router could not place a via at a waypoint; move "
+                                                            "it away from other copper." );
+                                      }
+
+                                      current = after;
+                                  }
 
                                   if( aContext.IsCancelled() )
                                   {
@@ -288,11 +337,20 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                               s.MarkModified();
                               JSON items = JSON::array();
 
+                              int vias = 0;
+
                               for( const KIID& kiid : run.iface.AddedItems() )
+                              {
                                   items.push_back( utf8( kiid.AsString() ) );
+
+                                  if( BOARD_ITEM* item = board.ResolveItem( kiid, true );
+                                      item && item->Type() == PCB_VIA_T )
+                                      vias++;
+                              }
 
                               return JSON{ { "completed", reached && fixed },
                                            { "tracksAdded", run.iface.Added() },
+                                           { "vias", vias },
                                            { "itemsRemoved", run.iface.Removed() },
                                            { "width", mm( sizes.TrackWidth() ) },
                                            { "items", items } };

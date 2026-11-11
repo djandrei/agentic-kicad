@@ -947,7 +947,7 @@ Rotate items by an angle (degrees, counterclockwise) about their position, or se
 
 ### `pcb_route`
 
-Route a track with KiCad's interactive router (PNS) from a pad to a pad, through optional waypoints, on a copper layer both pads are on (default: the start pad's side): walkaround (default) goes around obstacles, shove pushes other tracks aside. Width comes from the net class. Returns the tracks made, whether the route reached the end, and the ratsnest delta.
+Route a track with KiCad's interactive router (PNS) from a pad to a pad, through optional waypoints, on a copper layer the start pad is on (default: its side): walkaround (default) goes around obstacles, shove pushes other tracks aside. A waypoint with a layer places a via there and continues on that layer; the end pad must be on the last layer. Width and via size come from the net class. Returns the tracks and vias made, whether the route reached the end, and the ratsnest delta.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -958,7 +958,7 @@ Route a track with KiCad's interactive router (PNS) from a pad to a pad, through
 | `layer` | string |  |  |
 | `mode` | walkaround \| shove |  |  |
 | `timeoutSeconds` | number |  | Give up after this long; the board is left unchanged. |
-| `waypoints` | array |  | Points {x, y} to pass through. |
+| `waypoints` | array |  | Points {x, y} to pass through; {x, y, layer} changes to that copper layer with a via at the point. |
 | `width` | number or string |  |  |
 
 ### `pcb_rules_get`

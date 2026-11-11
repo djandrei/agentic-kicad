@@ -113,6 +113,21 @@ def test_route_refuses_a_layer_the_pads_are_not_on( client, tmp_path ):
     assert routed["completed"] and ok( client, "pcb_unrouted" )["unrouted"] == 0
 
 
+def test_route_changes_layer_at_a_waypoint( client, tmp_path ):
+    """A waypoint with a layer places a via and continues there (front pad to a back pad)."""
+    led_board( client, tmp_path / "via" )
+    ok( client, "pcb_flip", { "items": [ "D1" ] } )
+    assert "not on F.Cu" in fail( client, "pcb_route", { "from": "R1.2", "to": "D1.2" } )
+    assert "already on" in fail( client, "pcb_route", { "from": "R1.2", "to": "D1.2",
+                                                        "waypoints": [ { "x": 115, "y": 110, "layer": "F.Cu" } ] } )
+
+    routed = ok( client, "pcb_route", { "from": "R1.2", "to": "D1.2",
+                                        "waypoints": [ { "x": 115, "y": 110, "layer": "B.Cu" } ] } )
+    assert routed["completed"] and routed["vias"] == 1, routed
+    assert ok( client, "pcb_unrouted" )["unrouted"] == 0
+    assert ok( client, "pcb_drc", { "refillZones": False } )["errors"] == 0
+
+
 # F8 ---------------------------------------------------------------------------------------------
 
 def test_sim_model_needs_a_type_and_sim_run_reports_a_bad_circuit( client, tmp_path ):
