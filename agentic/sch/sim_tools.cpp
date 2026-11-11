@@ -37,6 +37,7 @@
 #include <sch_symbol.h>
 #include <schematic.h>
 #include <schematic_settings.h>
+#include <sim/sim_model.h>
 #include <sim/spice_circuit_model.h>
 #include <sim/spice_settings.h>
 #include <sim/spice_simulator.h>
@@ -82,6 +83,59 @@ namespace
                             return static_cast<char>( std::tolower( c ) );
                         } );
         return aText;
+    }
+
+
+    /// Refuse a built-in device or type KiCad does not know: SIM_MODEL would fall back to an untyped
+    /// line without a .model card, which ngspice cannot load.
+    void checkDeviceType( const std::string& aDevice, const std::string& aType )
+    {
+        std::vector<std::string>                        devices;
+        std::map<std::string, std::vector<std::string>> types;
+
+        for( SIM_MODEL::TYPE type : SIM_MODEL::TYPE_ITERATOR() )
+        {
+            const SIM_MODEL::INFO info = SIM_MODEL::TypeInfo( type );
+            const std::string     device = SIM_MODEL::DeviceInfo( info.deviceType ).fieldValue;
+
+            if( device.empty() )
+                continue;
+
+            if( !types.count( device ) )
+                devices.push_back( device );
+
+            std::vector<std::string>& list = types[device];
+
+            if( std::find( list.begin(), list.end(), info.fieldValue ) == list.end() )
+                list.push_back( info.fieldValue );
+        }
+
+        auto join = []( const std::vector<std::string>& aList )
+        {
+            std::string text;
+
+            for( const std::string& item : aList )
+            {
+                if( !item.empty() )
+                    text += ( text.empty() ? "" : ", " ) + item;
+            }
+
+            return text;
+        };
+
+        if( !types.count( aDevice ) )
+            throw TOOL_ERROR( "Unknown device '" + aDevice + "'. Built-in devices: " + join( devices ) + "." );
+
+        const std::vector<std::string>& valid = types[aDevice];
+
+        if( std::find( valid.begin(), valid.end(), aType ) != valid.end() )
+            return;
+
+        if( aType.empty() )
+            throw TOOL_ERROR( aDevice + " needs a type: " + join( valid ) + "." );
+
+        throw TOOL_ERROR( "'" + aType + "' is not a type of " + aDevice + "; its types are " + join( valid )
+                          + ( std::find( valid.begin(), valid.end(), "" ) != valid.end() ? " (or none)." : "." ) );
     }
 
 
@@ -658,7 +712,8 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
     tools.Add(
             { "sim_model_set",
               "Set a symbol's simulation model as its Sim.* fields: a built-in device (device R, C, L, V, I, D, NPN, "
-              "PNP, NMOS, PMOS, ...; type such as DC, SIN, PULSE for sources; params \"dc=0 ac=1\" or an object), "
+              "PNP, NMOS, PMOS, ...; type such as DC, SIN, PULSE for sources or GUMMELPOON, VBIC for transistors, "
+              "required where a device has several models; params \"dc=0 ac=1\" or an object), "
               "or a library model (library file, name), with pins {symbol pin: model pin}. clear removes them.",
               "sim",
               ProjectToolSchema( { { "item", { { "type", "string" } } },
@@ -684,7 +739,10 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
                           throw TOOL_ERROR( "Give device (built-in model) or library and name, or clear." );
 
                       if( aArgs.contains( "device" ) )
+                      {
+                          checkDeviceType( aArgs["device"], aArgs.value( "type", "" ) );
                           fields["Sim.Device"] = aArgs["device"];
+                      }
 
                       if( aArgs.contains( "type" ) )
                           fields["Sim.Type"] = aArgs["type"];
@@ -918,6 +976,13 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
                                         "package for its code models):\n"
                                                 + state.console,
                                         JSON{ { "missingDependency", "ngspice code models" } } );
+                  }
+
+                  // A circuit ngspice cannot load leaves its constants plot (planck, boltz, ...) current.
+                  if( utf8( sim->CurrentPlotName() ) == "const" )
+                  {
+                      throw TOOL_ERROR( "ngspice could not load the circuit, so no analysis ran (see sim_netlist):\n"
+                                        + state.console );
                   }
 
                   const std::vector<std::string> vectors = sim->AllVectors();

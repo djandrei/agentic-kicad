@@ -211,6 +211,16 @@ void AGENT_VIEWER::FinishLayout()
 void AGENT_VIEWER::Retire()
 {
     m_retiring = true;
+
+    // Destroy() only schedules the deletion, and the project may be freed before it runs: let go
+    // of its documents now (each viewer detaches as when a document closes), stop observing, and
+    // stop handling events (timers, paints) that would read the project.
+    for( DOC_SESSION* session : m_project.Sessions() )
+        OnDocumentClosing( *session );
+
+    m_services.Observers().Remove( this );
+    SetEvtHandlerEnabled( false );
+    Hide();
     Destroy();
 }
 

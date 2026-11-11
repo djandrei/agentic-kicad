@@ -164,6 +164,18 @@ namespace
         return head;
     }
 
+    /// The router starts and ends on the requested layer: a pad that is not on it (an SMD pad on
+    /// the other side) would get a track under it that does not connect, so refuse instead.
+    void requirePadOnLayer( BOARD& aBoard, const PAD* aPad, const std::string& aName, PCB_LAYER_ID aLayer )
+    {
+        if( aPad->IsOnLayer( aLayer ) )
+            return;
+
+        throw TOOL_ERROR( "Pad " + aName + " is not on " + PcbLayerName( aBoard, aLayer )
+                          + ". Route on the pads' layer; to change layers, add the tracks and vias with "
+                            "pcb_track_add and pcb_via_add." );
+    }
+
 } // namespace
 
 
@@ -174,9 +186,9 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
     tools.Add(
             { "pcb_route",
               "Route a track with KiCad's interactive router (PNS) from a pad to a pad, through optional "
-              "waypoints, on a copper layer: walkaround (default) goes around obstacles, shove pushes other "
-              "tracks aside. Width and vias come from the net class. Returns the tracks made, whether the route "
-              "reached the end, and the ratsnest delta.",
+              "waypoints, on a copper layer both pads are on (default: the start pad's side): walkaround "
+              "(default) goes around obstacles, shove pushes other tracks aside. Width comes from the net class. "
+              "Returns the tracks made, whether the route reached the end, and the ratsnest delta.",
               "pcb",
               pcbSchema(
                       { { "from", { { "type", "string" }, { "description", "Start pad, e.g. U1.3." } } },
@@ -207,6 +219,9 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
 
                   const PCB_LAYER_ID layer =
                           PcbLayer( board, aArgs.value( "layer", fromPad->IsOnLayer( F_Cu ) ? "F.Cu" : "B.Cu" ) );
+
+                  requirePadOnLayer( board, fromPad, aArgs["from"], layer );
+                  requirePadOnLayer( board, toPad, aArgs["to"], layer );
 
                   JSON result = PcbMutate(
                           *project, s,
@@ -301,7 +316,11 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                      BOARD&             board = s.Board();
                      PAD*               fromPad = PcbPad( board, aArgs["from"] );
                      PAD*               toPad = PcbPad( board, aArgs["to"] );
-                     const PCB_LAYER_ID layer = PcbLayer( board, aArgs.value( "layer", "F.Cu" ) );
+                     const PCB_LAYER_ID layer =
+                             PcbLayer( board, aArgs.value( "layer", fromPad->IsOnLayer( F_Cu ) ? "F.Cu" : "B.Cu" ) );
+
+                     requirePadOnLayer( board, fromPad, aArgs["from"], layer );
+                     requirePadOnLayer( board, toPad, aArgs["to"], layer );
 
                      JSON result = PcbMutate(
                              *project, s, "pcb_diff_pair_route", aArgs, true,
@@ -481,11 +500,20 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                      }
                      else
                      {
+                         // all: every unlocked footprint; default: the unlocked ones off the board
+                         // (outside the outline's box, as the autoplacer's own off-board test).
+                         const bool  all = aArgs.value( "all", false );
+                         const BOX2I boardBox = board.GetBoardEdgesBoundingBox();
+
                          for( FOOTPRINT* fp : board.Footprints() )
                          {
-                             if( !fp->IsLocked() )
+                             if( !fp->IsLocked() && ( all || !boardBox.Contains( fp->GetPosition() ) ) )
                                  footprints.push_back( fp );
                          }
+
+                         if( footprints.empty() )
+                             throw TOOL_ERROR(
+                                     "Every footprint is on the board already; list footprints or give all." );
                      }
 
                      JSON result = PcbMutate(
@@ -499,8 +527,8 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                                  // It always draws its working area; nobody sees this overlay.
                                  placer.SetOverlay( std::make_shared<KIGFX::VIEW_OVERLAY>() );
 
-                                 const bool offboard = !aArgs.value( "all", false ) && !aArgs.contains( "footprints" );
-                                 AR_RESULT  status = placer.AutoplaceFootprints( footprints, &aCommit, offboard );
+                                 // The list is exactly what moves; the placer's own off-board pick would add more.
+                                 AR_RESULT status = placer.AutoplaceFootprints( footprints, &aCommit, false );
 
                                  if( status == AR_CANCELLED )
                                      throw TOOL_ERROR( "Cancelled; nothing was moved.", JSON{ { "cancelled", true } } );

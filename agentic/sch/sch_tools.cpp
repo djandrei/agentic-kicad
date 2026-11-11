@@ -765,8 +765,11 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                      return TOOL_RESULT::Data( result );
                  } } );
 
-    auto transformTool = [&aServices]( const std::string& aName, const std::string& aDescription, JSON aExtra,
-                                       std::function<void( SCH_ITEM*, const JSON&, const VECTOR2I& aCenter )> aApply )
+    // aCenter: the grid point nearest the items' centre; aAnchor: the first item's position before.
+    using TRANSFORM = std::function<void( SCH_ITEM*, const JSON&, const VECTOR2I& aCenter, const VECTOR2I& aAnchor )>;
+
+    auto transformTool =
+            [&aServices]( const std::string& aName, const std::string& aDescription, JSON aExtra, TRANSFORM aApply )
     {
         JSON properties = aExtra;
         properties["items"] = ITEMS_ARG;
@@ -801,6 +804,9 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                                                             SchIu( schIUScale.IUTomm( bbox.GetCenter().y ) ) );
                                      s.SetCurrentSheet( items.front().path );
 
+                                     // The first item's position before any change: sch_move's "to" refers to it.
+                                     const VECTOR2I anchor = items.front().item->GetPosition();
+
                                      JSON result = SchMutate(
                                              *project, s, aName, aArgs, true,
                                              [&]( SCH_EDIT& aEdit ) -> JSON
@@ -809,7 +815,7 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                                                  {
                                                      JSON before = SchItemJson( found.item, found.path );
                                                      aEdit.Modify( found.item, found.path.LastScreen() );
-                                                     aApply( found.item, aArgs, center );
+                                                     aApply( found.item, aArgs, center, anchor );
                                                      aEdit.changed.push_back(
                                                              { { "kiid", utf8( found.item->m_Uuid.AsString() ) },
                                                                { "before", before } } );
@@ -826,22 +832,16 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                    "Move items by delta {x, y} (mm, snapped), or the first item to position \"to\" with the others "
                    "following. Wires attached to moved pins are not dragged; reconnect them.",
                    { { "delta", POINT }, { "to", POINT } },
-                   []( SCH_ITEM* aItem, const JSON& aArgs, const VECTOR2I& )
+                   []( SCH_ITEM* aItem, const JSON& aArgs, const VECTOR2I&, const VECTOR2I& aAnchor )
                    {
-                       static thread_local VECTOR2I    offset;
-                       static thread_local const JSON* lastArgs = nullptr;
+                       VECTOR2I offset;
 
-                       if( lastArgs != &aArgs )
-                       {
-                           lastArgs = &aArgs;
-
-                           if( aArgs.contains( "to" ) )
-                               offset = SchPoint( aArgs["to"], "to" ) - aItem->GetPosition();
-                           else if( aArgs.contains( "delta" ) )
-                               offset = SchPoint( aArgs["delta"], "delta" );
-                           else
-                               throw TOOL_ERROR( "Give delta or to." );
-                       }
+                       if( aArgs.contains( "to" ) )
+                           offset = SchPoint( aArgs["to"], "to" ) - aAnchor;
+                       else if( aArgs.contains( "delta" ) )
+                           offset = SchPoint( aArgs["delta"], "delta" );
+                       else
+                           throw TOOL_ERROR( "Give delta or to." );
 
                        aItem->Move( offset );
                    } );
@@ -849,7 +849,7 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
     transformTool( "sch_rotate",
                    "Rotate items by a multiple of 90 degrees (counterclockwise by default) about their centre.",
                    { { "angle", { { "type", { "number", "string" } } } } },
-                   []( SCH_ITEM* aItem, const JSON& aArgs, const VECTOR2I& aCenter )
+                   []( SCH_ITEM* aItem, const JSON& aArgs, const VECTOR2I& aCenter, const VECTOR2I& )
                    {
                        double angle = aArgs.contains( "angle" ) ? ParseAngleDeg( aArgs["angle"], "angle" ) : 90.0;
                        int    turns = static_cast<int>( std::lround( angle / 90.0 ) );
@@ -864,7 +864,7 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
     transformTool( "sch_mirror",
                    "Mirror items about their centre: axis \"y\" flips left-right, \"x\" flips top-bottom.",
                    { { "axis", { { "type", "string" }, { "enum", { "x", "y" } } } } },
-                   []( SCH_ITEM* aItem, const JSON& aArgs, const VECTOR2I& aCenter )
+                   []( SCH_ITEM* aItem, const JSON& aArgs, const VECTOR2I& aCenter, const VECTOR2I& )
                    {
                        if( aArgs.value( "axis", "y" ) == "y" )
                            aItem->MirrorHorizontally( aCenter.x );

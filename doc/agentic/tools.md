@@ -703,7 +703,7 @@ The simulation model of a symbol: its Sim.* fields (device, type, params, pins, 
 
 ### `sim_model_set`
 
-Set a symbol's simulation model as its Sim.* fields: a built-in device (device R, C, L, V, I, D, NPN, PNP, NMOS, PMOS, ...; type such as DC, SIN, PULSE for sources; params "dc=0 ac=1" or an object), or a library model (library file, name), with pins {symbol pin: model pin}. clear removes them.
+Set a symbol's simulation model as its Sim.* fields: a built-in device (device R, C, L, V, I, D, NPN, PNP, NMOS, PMOS, ...; type such as DC, SIN, PULSE for sources or GUMMELPOON, VBIC for transistors, required where a device has several models; params "dc=0 ac=1" or an object), or a library model (library file, name), with pins {symbol pin: model pin}. clear removes them.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -947,7 +947,7 @@ Rotate items by an angle (degrees, counterclockwise) about their position, or se
 
 ### `pcb_route`
 
-Route a track with KiCad's interactive router (PNS) from a pad to a pad, through optional waypoints, on a copper layer: walkaround (default) goes around obstacles, shove pushes other tracks aside. Width and vias come from the net class. Returns the tracks made, whether the route reached the end, and the ratsnest delta.
+Route a track with KiCad's interactive router (PNS) from a pad to a pad, through optional waypoints, on a copper layer both pads are on (default: the start pad's side): walkaround (default) goes around obstacles, shove pushes other tracks aside. Width comes from the net class. Returns the tracks made, whether the route reached the end, and the ratsnest delta.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
