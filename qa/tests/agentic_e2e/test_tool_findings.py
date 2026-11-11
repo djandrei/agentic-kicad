@@ -128,6 +128,46 @@ def test_route_changes_layer_at_a_waypoint( client, tmp_path ):
     assert ok( client, "pcb_drc", { "refillZones": False } )["errors"] == 0
 
 
+def overlapping_copper( client, net ):
+    """Pairs of collinear segments of a net on one layer that share a stretch of copper."""
+    import itertools
+    import math
+
+    tracks = ok( client, "pcb_query", { "net": net, "type": "track" } )["items"]
+    segments = [ ( ( t["start"]["x"], t["start"]["y"] ), ( t["end"]["x"], t["end"]["y"] ), t["layer"] ) for t in tracks ]
+    found = []
+
+    for ( a1, a2, la ), ( b1, b2, lb ) in itertools.combinations( segments, 2 ):
+        dx, dy = a2[0] - a1[0], a2[1] - a1[1]
+        n = math.hypot( dx, dy )
+
+        if la != lb or n == 0:
+            continue
+
+        if any( abs( dx * ( p[1] - a1[1] ) - dy * ( p[0] - a1[0] ) ) / n > 1e-3 for p in ( b1, b2 ) ):
+            continue
+
+        t = sorted( ( ( p[0] - a1[0] ) * dx + ( p[1] - a1[1] ) * dy ) / n for p in ( b1, b2 ) )
+
+        if min( n, t[1] ) - max( 0, t[0] ) > 1e-3:
+            found.append( ( a1, a2, b1, b2 ) )
+
+    return found
+
+
+def test_routes_into_one_pad_do_not_double_the_copper( client, fixture_project ):
+    """A second route into a pad followed the first one's track: 4.5 mm of doubled copper, which a
+    later shove or tuning tore into a dangling stub (seen on the psu_monitor board)."""
+    ok( client, "project_open", { "path": str( fixture_project( "route_overlap" ) ) } )
+    ok( client, "pcb_route", { "from": "J2.3", "to": "U1.7" } )
+    second = ok( client, "pcb_route", { "from": "U1.7", "to": "R6.1" } )
+    assert second["completed"] and second["overlapsMerged"] >= 1, second
+    assert overlapping_copper( client, "/ALERT" ) == []
+    assert ok( client, "pcb_unrouted", { "net": "/ALERT" } )["unrouted"] == 0
+    drc = ok( client, "pcb_drc", { "severity": "all", "refillZones": False } )
+    assert "track_dangling" not in [ v["type"] for v in drc["violations"] ]
+
+
 # F8 ---------------------------------------------------------------------------------------------
 
 def test_sim_model_needs_a_type_and_sim_run_reports_a_bad_circuit( client, tmp_path ):

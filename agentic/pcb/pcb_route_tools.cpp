@@ -52,6 +52,7 @@
 #include <view/view_overlay.h>
 
 #include <cmath>
+#include <set>
 
 
 namespace AGENTIC
@@ -164,6 +165,167 @@ namespace
         return head;
     }
 
+    /// A route into a pad that already has copper of its net (a second connection to it) can be
+    /// laid on top of that copper; a later shove or tuning tears doubled copper into a dangling
+    /// stub. Collinear segments of one net and layer that share copper are replaced by pieces that
+    /// meet end to end: every point where one of them ends becomes a joint (KiCad joins a track end
+    /// to another track's end, not to its middle) and the shared stretch is kept once, at the wider
+    /// width. Only pairs with a segment from \a aAdded (or made here) are looked at. Returns the
+    /// segments removed; \a aMerged counts the overlaps resolved.
+    std::set<KIID> removeDoubledCopper( BOARD& aBoard, BOARD_COMMIT& aCommit, std::set<KIID> aAdded, int& aMerged )
+    {
+        const double   tolerance = pcbIUScale.mmToIU( 0.001 );
+        std::set<KIID> removed;
+        aMerged = 0;
+
+        std::set<int> nets;
+
+        for( PCB_TRACK* track : aBoard.Tracks() )
+        {
+            if( aAdded.count( track->m_Uuid ) )
+                nets.insert( track->GetNetCode() );
+        }
+
+        // Where aPoint lies along aSegment (from its start), if it lies on its line.
+        auto along = [&]( const PCB_TRACK* aSegment, const VECTOR2I& aPoint, double& aAt ) -> bool
+        {
+            const VECTOR2D direction( aSegment->GetEnd() - aSegment->GetStart() );
+            const double   length = direction.EuclideanNorm();
+
+            if( length < 1 )
+                return false;
+
+            const VECTOR2D offset( aPoint - aSegment->GetStart() );
+
+            if( std::abs( direction.Cross( offset ) ) / length > tolerance )
+                return false;
+
+            aAt = direction.Dot( offset ) / length;
+            return true;
+        };
+
+        // One overlap per pass: the segments change, so collect them again.
+        for( bool changed = true; changed; )
+        {
+            changed = false;
+            std::vector<PCB_TRACK*> segments;
+
+            for( PCB_TRACK* track : aBoard.Tracks() )
+            {
+                if( track->Type() == PCB_TRACE_T && nets.count( track->GetNetCode() )
+                    && !removed.count( track->m_Uuid ) )
+                {
+                    segments.push_back( track );
+                }
+            }
+
+            for( size_t i = 0; i < segments.size() && !changed; ++i )
+            {
+                for( size_t j = 0; j < segments.size() && !changed; ++j )
+                {
+                    PCB_TRACK* a = segments[i];
+                    PCB_TRACK* b = segments[j];
+
+                    if( a == b || a->GetNetCode() != b->GetNetCode() || a->GetLayer() != b->GetLayer()
+                        || ( !aAdded.count( a->m_Uuid ) && !aAdded.count( b->m_Uuid ) ) )
+                    {
+                        continue;
+                    }
+
+                    double aStart = 0;
+                    double aEnd = 0;
+
+                    if( !along( b, a->GetStart(), aStart ) || !along( b, a->GetEnd(), aEnd ) )
+                        continue;
+
+                    const double length = VECTOR2D( b->GetEnd() - b->GetStart() ).EuclideanNorm();
+                    const double aLow = std::min( aStart, aEnd );
+                    const double aHigh = std::max( aStart, aEnd );
+
+                    if( std::min( aHigh, length ) - std::max( aLow, 0.0 ) <= tolerance )
+                        continue;
+
+                    // The joints along b: the four ends, close ones as one.
+                    std::vector<std::pair<double, VECTOR2I>> joints = { { 0.0, b->GetStart() },
+                                                                        { length, b->GetEnd() },
+                                                                        { aStart, a->GetStart() },
+                                                                        { aEnd, a->GetEnd() } };
+                    std::sort( joints.begin(), joints.end(),
+                               []( const auto& l, const auto& r )
+                               {
+                                   return l.first < r.first;
+                               } );
+
+                    std::vector<std::pair<double, VECTOR2I>> points;
+
+                    for( const auto& joint : joints )
+                    {
+                        if( points.empty() || joint.first - points.back().first > tolerance )
+                            points.push_back( joint );
+                    }
+
+                    struct PIECE
+                    {
+                        VECTOR2I start;
+                        VECTOR2I end;
+                        int      width;
+                    };
+
+                    std::vector<PIECE> pieces;
+
+                    for( size_t k = 0; k + 1 < points.size(); ++k )
+                    {
+                        const double middle = ( points[k].first + points[k + 1].first ) / 2;
+                        const bool   inA = middle >= aLow && middle <= aHigh;
+                        const bool   inB = middle >= 0 && middle <= length;
+
+                        if( inA || inB )
+                        {
+                            pieces.push_back( { points[k].second, points[k + 1].second,
+                                                std::max( inA ? a->GetWidth() : 0, inB ? b->GetWidth() : 0 ) } );
+                        }
+                    }
+
+                    // b and a become the first two pieces; more pieces are new tracks.
+                    std::vector<PCB_TRACK*> slots = { b, a };
+
+                    for( size_t k = 0; k < pieces.size(); ++k )
+                    {
+                        PCB_TRACK* track = nullptr;
+
+                        if( k < slots.size() )
+                        {
+                            track = slots[k];
+                            aCommit.Modify( track );
+                        }
+                        else
+                        {
+                            track = static_cast<PCB_TRACK*>( b->Duplicate( true, &aCommit ) );
+                            aCommit.Add( track );
+                            aAdded.insert( track->m_Uuid );
+                        }
+
+                        track->SetStart( pieces[k].start );
+                        track->SetEnd( pieces[k].end );
+                        track->SetWidth( pieces[k].width );
+                    }
+
+                    for( size_t k = pieces.size(); k < slots.size(); ++k )
+                    {
+                        aCommit.Remove( slots[k] );
+                        removed.insert( slots[k]->m_Uuid );
+                    }
+
+                    aMerged++;
+                    changed = true;
+                }
+            }
+        }
+
+        return removed;
+    }
+
+
     /// The router starts and ends on the requested layer: a pad that is not on it (an SMD pad on
     /// the other side) would get a track under it that does not connect, so refuse instead.
     void requirePadOnLayer( BOARD& aBoard, const PAD* aPad, const std::string& aName, PCB_LAYER_ID aLayer )
@@ -249,7 +411,7 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                           *project, s,
                           "pcb_route " + aArgs["from"].get<std::string>() + " " + aArgs["to"].get<std::string>(), aArgs,
                           true,
-                          [&]( BOARD_COMMIT& ) -> JSON
+                          [&]( BOARD_COMMIT& aCommit ) -> JSON
                           {
                               ROUTER_RUN run( s, routingMode( aArgs.value( "mode", "walkaround" ) ),
                                               PNS::PNS_MODE_ROUTE_SINGLE );
@@ -337,10 +499,17 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                               s.MarkModified();
                               JSON items = JSON::array();
 
-                              int vias = 0;
+                              int                  vias = 0;
+                              const std::set<KIID> added( run.iface.AddedItems().begin(),
+                                                          run.iface.AddedItems().end() );
+                              int                  merged = 0;
+                              const std::set<KIID> doubled = removeDoubledCopper( board, aCommit, added, merged );
 
                               for( const KIID& kiid : run.iface.AddedItems() )
                               {
+                                  if( doubled.count( kiid ) )
+                                      continue;
+
                                   items.push_back( utf8( kiid.AsString() ) );
 
                                   if( BOARD_ITEM* item = board.ResolveItem( kiid, true );
@@ -351,6 +520,7 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                               return JSON{ { "completed", reached && fixed },
                                            { "tracksAdded", run.iface.Added() },
                                            { "vias", vias },
+                                           { "overlapsMerged", merged },
                                            { "itemsRemoved", run.iface.Removed() },
                                            { "width", mm( sizes.TrackWidth() ) },
                                            { "items", items } };
@@ -382,7 +552,7 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
 
                      JSON result = PcbMutate(
                              *project, s, "pcb_diff_pair_route", aArgs, true,
-                             [&]( BOARD_COMMIT& ) -> JSON
+                             [&]( BOARD_COMMIT& aCommit ) -> JSON
                              {
                                  ROUTER_RUN run( s, PNS::RM_Walkaround, PNS::PNS_MODE_ROUTE_DIFF_PAIR );
                                  PNS::ITEM* start = run.itemFor( fromPad );
@@ -414,13 +584,21 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                                      throw TOOL_ERROR( "The router found no path for the pair." );
 
                                  s.MarkModified();
-                                 JSON items = JSON::array();
+                                 JSON                 items = JSON::array();
+                                 const std::set<KIID> added( run.iface.AddedItems().begin(),
+                                                             run.iface.AddedItems().end() );
+                                 int                  merged = 0;
+                                 const std::set<KIID> doubled = removeDoubledCopper( board, aCommit, added, merged );
 
                                  for( const KIID& kiid : run.iface.AddedItems() )
-                                     items.push_back( utf8( kiid.AsString() ) );
+                                 {
+                                     if( !doubled.count( kiid ) )
+                                         items.push_back( utf8( kiid.AsString() ) );
+                                 }
 
                                  return JSON{ { "completed", fixed },
                                               { "tracksAdded", run.iface.Added() },
+                                              { "overlapsMerged", merged },
                                               { "items", items } };
                              } );
 

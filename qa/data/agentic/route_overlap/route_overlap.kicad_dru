@@ -1,0 +1,2 @@
+(version 1)
+(rule "ac" (constraint clearance (min 0.5mm)) (condition "A.NetClass == 'AC'"))
