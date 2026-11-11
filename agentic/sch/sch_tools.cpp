@@ -444,7 +444,7 @@ JSON SchMutate( AGENT_PROJECT& aProject, SCH_DOC_SESSION& aSession, const std::s
                 }
 
                 change["items"] = kiids;
-                change["sheet"] = utf8( aSession.CurrentSheet().PathHumanReadable( false ) );
+                change["sheet"] = utf8( aSession.CurrentSheet().PathHumanReadable() );
                 aSession.RecordChange( change );
                 return result;
             } );
@@ -476,7 +476,7 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                              symbols++;
                          }
 
-                         sheets.push_back( { { "path", utf8( path.PathHumanReadable( false ) ) },
+                         sheets.push_back( { { "path", utf8( path.PathHumanReadable() ) },
                                              { "name", utf8( path.Last()->GetName() ) },
                                              { "kiid", utf8( path.Last()->m_Uuid.AsString() ) },
                                              { "file", s.FileOf( screen ) },
@@ -665,7 +665,8 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
 
     tools.Add( { "sch_symbol_set",
                  "Change a placed symbol: value, footprint, reference, fields ({name: text}, null removes a user "
-                 "field), unit, dnp, excludeFromBom, excludeFromBoard, excludeFromSim.",
+                 "field), unit, dnp, excludeFromBom, excludeFromBoard, excludeFromSim. A reference (U1) changes "
+                 "every unit of a multi-unit symbol; U1A or a KIID names one unit.",
                  "sch",
                  schSchema( { { "item", { { "type", "string" } } },
                               { "value", { { "type", "string" } } },
@@ -682,83 +683,116 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                  {
                      AGENT_PROJECT*   project = nullptr;
                      SCH_DOC_SESSION& s = session( aServices, aArgs, &project );
-                     SCH_FOUND        found = SchFindOne( s.Schematic(), aArgs["item"].get<std::string>() );
+                     const std::string      handle = aArgs["item"];
+                     std::vector<SCH_FOUND> targets = SchFind( s.Schematic(), handle );
 
-                     if( found.item->Type() != SCH_SYMBOL_T )
-                         throw TOOL_ERROR( "'" + aArgs["item"].get<std::string>() + "' is not a symbol." );
+                     for( const SCH_FOUND& target : targets )
+                     {
+                         if( target.item->Type() != SCH_SYMBOL_T )
+                             throw TOOL_ERROR( "'" + handle + "' is not a symbol." );
+                     }
 
-                     SCH_SYMBOL* symbol = static_cast<SCH_SYMBOL*>( found.item );
-                     s.SetCurrentSheet( found.path );
+                     // A reference names every unit of a multi-unit symbol: fields, value, footprint and
+                     // attributes are the symbol's, so they change on all units (as KiCad's editor does).
+                     if( targets.size() > 1 )
+                     {
+                         const SCH_FOUND& first = targets.front();
+                         const wxString   ref = static_cast<SCH_SYMBOL*>( first.item )->GetRef( &first.path, false );
+
+                         for( const SCH_FOUND& target : targets )
+                         {
+                             // A symbol in a sheet used more than once has a reference per instance.
+                             if( static_cast<SCH_SYMBOL*>( target.item )->GetRef( &target.path, false ) != ref )
+                             {
+                                 throw TOOL_ERROR( "'" + handle + "' names " + std::to_string( targets.size() )
+                                                   + " sheet instances; use the reference of the one you mean." );
+                             }
+                         }
+
+                         if( aArgs.contains( "unit" ) )
+                         {
+                             throw TOOL_ERROR( "'" + handle + "' names " + std::to_string( targets.size() )
+                                               + " units; to change one unit's unit number, use its KIID or a "
+                                                 "reference with its unit, e.g. "
+                                               + utf8( ref ) + "A." );
+                         }
+                     }
+
+                     s.SetCurrentSheet( targets.front().path );
 
                      JSON result = SchMutate(
-                             *project, s, "sch_symbol_set " + aArgs["item"].get<std::string>(), aArgs,
-                             aArgs.contains( "unit" ),
+                             *project, s, "sch_symbol_set " + handle, aArgs, aArgs.contains( "unit" ),
                              [&]( SCH_EDIT& aEdit ) -> JSON
                              {
-                                 JSON before = SchItemJson( symbol, found.path );
-                                 aEdit.Modify( symbol, found.path.LastScreen() );
-                                 const SCH_SHEET_PATH* path = &found.path;
-
-                                 if( aArgs.contains( "value" ) )
-                                     symbol->SetValueFieldText( wx( aArgs["value"] ) );
-
-                                 if( aArgs.contains( "footprint" ) )
-                                     symbol->SetFootprintFieldText( wx( aArgs["footprint"] ) );
-
-                                 if( aArgs.contains( "reference" ) )
-                                     symbol->SetRef( path, wx( aArgs["reference"] ) );
-
-                                 if( aArgs.contains( "unit" ) )
+                                 for( const SCH_FOUND& found : targets )
                                  {
-                                     const int unit = aArgs["unit"];
+                                     SCH_SYMBOL* symbol = static_cast<SCH_SYMBOL*>( found.item );
+                                     JSON        before = SchItemJson( symbol, found.path );
+                                     aEdit.Modify( symbol, found.path.LastScreen() );
+                                     const SCH_SHEET_PATH* path = &found.path;
 
-                                     if( unit > symbol->GetUnitCount() )
-                                         throw TOOL_ERROR( "The symbol has " + std::to_string( symbol->GetUnitCount() )
-                                                           + " units." );
+                                     if( aArgs.contains( "value" ) )
+                                         symbol->SetValueFieldText( wx( aArgs["value"] ) );
 
-                                     symbol->SetUnitSelection( path, unit );
-                                     symbol->SetUnit( unit );
-                                 }
+                                     if( aArgs.contains( "footprint" ) )
+                                         symbol->SetFootprintFieldText( wx( aArgs["footprint"] ) );
 
-                                 if( aArgs.contains( "dnp" ) )
-                                     symbol->SetDNP( aArgs["dnp"], path );
+                                     if( aArgs.contains( "reference" ) )
+                                         symbol->SetRef( path, wx( aArgs["reference"] ) );
 
-                                 if( aArgs.contains( "excludeFromBom" ) )
-                                     symbol->SetExcludedFromBOM( aArgs["excludeFromBom"], path );
-
-                                 if( aArgs.contains( "excludeFromBoard" ) )
-                                     symbol->SetExcludedFromBoard( aArgs["excludeFromBoard"], path );
-
-                                 if( aArgs.contains( "excludeFromSim" ) )
-                                     symbol->SetExcludedFromSim( aArgs["excludeFromSim"], path );
-
-                                 const JSON fields = aArgs.value( "fields", JSON::object() );
-
-                                 for( const auto& [name, value] : fields.items() )
-                                 {
-                                     SCH_FIELD* field = symbol->GetField( wx( name ) );
-
-                                     if( value.is_null() )
+                                     if( aArgs.contains( "unit" ) )
                                      {
-                                         if( field && !field->IsMandatory() )
-                                             symbol->RemoveField( field );
+                                         const int unit = aArgs["unit"];
 
-                                         continue;
+                                         if( unit > symbol->GetUnitCount() )
+                                             throw TOOL_ERROR( "The symbol has "
+                                                               + std::to_string( symbol->GetUnitCount() ) + " units." );
+
+                                         symbol->SetUnitSelection( path, unit );
+                                         symbol->SetUnit( unit );
                                      }
 
-                                     if( !field )
+                                     if( aArgs.contains( "dnp" ) )
+                                         symbol->SetDNP( aArgs["dnp"], path );
+
+                                     if( aArgs.contains( "excludeFromBom" ) )
+                                         symbol->SetExcludedFromBOM( aArgs["excludeFromBom"], path );
+
+                                     if( aArgs.contains( "excludeFromBoard" ) )
+                                         symbol->SetExcludedFromBoard( aArgs["excludeFromBoard"], path );
+
+                                     if( aArgs.contains( "excludeFromSim" ) )
+                                         symbol->SetExcludedFromSim( aArgs["excludeFromSim"], path );
+
+                                     const JSON fields = aArgs.value( "fields", JSON::object() );
+
+                                     for( const auto& [name, value] : fields.items() )
                                      {
-                                         SCH_FIELD newField( symbol, FIELD_T::USER, wx( name ) );
-                                         newField.SetPosition( symbol->GetPosition() );
-                                         newField.SetVisible( false );
-                                         field = symbol->AddField( newField );
+                                         SCH_FIELD* field = symbol->GetField( wx( name ) );
+
+                                         if( value.is_null() )
+                                         {
+                                             if( field && !field->IsMandatory() )
+                                                 symbol->RemoveField( field );
+
+                                             continue;
+                                         }
+
+                                         if( !field )
+                                         {
+                                             SCH_FIELD newField( symbol, FIELD_T::USER, wx( name ) );
+                                             newField.SetPosition( symbol->GetPosition() );
+                                             newField.SetVisible( false );
+                                             field = symbol->AddField( newField );
+                                         }
+
+                                         field->SetText( wx( value.get<std::string>() ) );
                                      }
 
-                                     field->SetText( wx( value.get<std::string>() ) );
+                                     aEdit.changed.push_back(
+                                             { { "kiid", utf8( symbol->m_Uuid.AsString() ) }, { "before", before } } );
                                  }
 
-                                 aEdit.changed.push_back(
-                                         { { "kiid", utf8( symbol->m_Uuid.AsString() ) }, { "before", before } } );
                                  return JSON::object();
                              } );
 
@@ -953,7 +987,8 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
             { "sch_sheet_add",
               "Add a hierarchical sub-sheet: a sheet symbol on the parent sheet with a new sheet file (or an "
               "existing one, which then becomes another instance). Each pin {name, side: left|right|top|bottom, "
-              "shape: input|output|bidirectional|passive} gets a hierarchical label inside a new sub-sheet.",
+              "shape: input|output|bidirectional|passive} gets a hierarchical label inside a new sub-sheet. Without "
+              "pins, another instance of an existing sheet gets one pin per hierarchical label of that sheet.",
               "sch",
               schSchema( { { "name", { { "type", "string" } } },
                            { "sheetFile",
@@ -977,6 +1012,17 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
 
                   if( file == s.Path() )
                       throw TOOL_ERROR( "A sub-sheet cannot use the root file." );
+
+                  // A sheet inside its own file (or an ancestor's) would contain itself without end.
+                  for( size_t i = 0; i < parent.size(); ++i )
+                  {
+                      if( parent.at( i )->GetScreen() && s.FileOf( parent.at( i )->GetScreen() ) == file )
+                      {
+                          throw TOOL_ERROR( "'" + file + "' is the file of sheet " + utf8( parent.PathHumanReadable() )
+                                            + " or one above it: a sheet cannot contain itself. Give sheet (e.g. "
+                                              "\"/\") to add it elsewhere." );
+                      }
+                  }
 
                   s.SetCurrentSheet( parent );
 
@@ -1012,13 +1058,41 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
 
                                   screen = new SCH_SCREEN( &schematic );
                                   screen->SetFileName( wx( project->Files().Resolve( file ).string() ) );
+
+                                  // Every sheet shows the root's title block (title_block_set); the title is
+                                  // the root's own.
+                                  TITLE_BLOCK titleBlock = schematic.RootScreen()->GetTitleBlock();
+                                  titleBlock.SetTitle( wxEmptyString );
+                                  screen->SetTitleBlock( titleBlock );
                               }
 
                               sheet->SetScreen( screen );
 
+                              JSON pinSpecs = aArgs.value( "pins", JSON::array() );
+
+                              // Another instance of a sheet file gets the file's hierarchical labels as pins,
+                              // inputs on the left and outputs on the right, unless pins are given.
+                              if( !newScreen && !aArgs.contains( "pins" ) )
+                              {
+                                  for( SCH_ITEM* item : screen->Items().OfType( SCH_HIER_LABEL_T ) )
+                                  {
+                                      const LABEL_FLAG_SHAPE labelShape =
+                                              static_cast<SCH_HIERLABEL*>( item )->GetShape();
+                                      const std::string shape = labelShape == L_INPUT         ? "input"
+                                                                : labelShape == L_OUTPUT      ? "output"
+                                                                : labelShape == L_UNSPECIFIED ? "passive"
+                                                                                              : "bidirectional";
+
+                                      pinSpecs.push_back(
+                                              { { "name", utf8( static_cast<SCH_HIERLABEL*>( item )->GetText() ) },
+                                                { "side", shape == "output" ? "right" : "left" },
+                                                { "shape", shape } } );
+                                  }
+                              }
+
                               int pinIndex = 0;
 
-                              for( const JSON& pinSpec : aArgs.value( "pins", JSON::array() ) )
+                              for( const JSON& pinSpec : pinSpecs )
                               {
                                   const std::string side = pinSpec.value( "side", "left" );
                                   const std::string shape = pinSpec.value( "shape", "bidirectional" );
@@ -1078,8 +1152,7 @@ void RegisterSchEditTools( AGENT_SERVICES& aServices )
                               if( newScreen )
                                   s.MarkModified( file );
 
-                              return JSON{ { "sheetPath", utf8( child.PathHumanReadable( false ) ) },
-                                           { "file", file } };
+                              return JSON{ { "sheetPath", utf8( child.PathHumanReadable() ) }, { "file", file } };
                           } );
 
                   s.HierarchyChanged();

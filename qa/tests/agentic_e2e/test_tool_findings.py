@@ -43,6 +43,17 @@ def client( isolated_env ):
     c.close()
 
 
+def two_unit_part( client ):
+    """A project library with a two-unit symbol (unit 1 logic, unit 2 power)."""
+    ok( client, "lib_create", { "type": "symbol", "name": "Parts" } )
+    ok( client, "sym_create", { "library": "Parts", "name": "DUO", "reference": "U", "units": 2 } )
+    ok( client, "sym_pins_set", { "library": "Parts", "symbol": "DUO", "pins": [
+        { "number": "1", "name": "IN", "type": "input", "side": "left", "unit": 1 },
+        { "number": "2", "name": "OUT", "type": "output", "side": "right", "unit": 1 },
+        { "number": "3", "name": "VDD", "type": "power_in", "side": "top", "unit": 2 },
+        { "number": "4", "name": "GND", "type": "power_in", "side": "bottom", "unit": 2 } ] } )
+
+
 def position( item ):
     return ( round( item["position"]["x"], 3 ), round( item["position"]["y"], 3 ) )
 
@@ -133,3 +144,78 @@ def test_autoplace_default_places_only_footprints_off_the_board( client, tmp_pat
 
     for ref, at in before.items():
         assert position( ok( client, "pcb_query", { "reference": ref } )["items"][0] ) == at
+
+
+# F2 ---------------------------------------------------------------------------------------------
+
+def test_title_block_title_is_kept_and_new_sheets_get_the_title_block( client, tmp_path ):
+    new_project( client, tmp_path / "title" )
+    ok( client, "title_block_set", { "title": "Sensor", "revision": "B", "company": "ACME" } )
+    block = ok( client, "title_block_get" )
+    assert ( block["title"], block["revision"], block["company"] ) == ( "Sensor", "B", "ACME" )
+
+    ok( client, "sch_sheet_add", { "name": "sub", "sheetFile": "sub.kicad_sch", "position": { "x": 50, "y": 50 } } )
+    text = ok( client, "file_read", { "path": "sub.kicad_sch" } )["text"]
+    assert '(rev "B")' in text and '(company "ACME")' in text
+
+
+# F3 ---------------------------------------------------------------------------------------------
+
+def test_derived_symbol_keeps_the_parents_fields( client, tmp_path ):
+    ok( client, "project_create", { "path": str( tmp_path / "derive" ) } )
+    ok( client, "lib_create", { "type": "symbol", "name": "Parts" } )
+    ok( client, "sym_create", { "library": "Parts", "name": "HDR", "reference": "J", "footprint": "Lib:HDR" } )
+    ok( client, "sym_pins_set", { "library": "Parts", "symbol": "HDR", "pins": [ { "number": "1", "name": "A" } ] } )
+    ok( client, "sym_field_set", { "library": "Parts", "symbol": "HDR", "fields": { "Maker": "ACME" } } )
+    ok( client, "sym_derive", { "library": "Parts", "name": "HDR_K", "parent": "HDR" } )
+
+    check = ok( client, "sym_check", { "library": "Parts", "symbol": "HDR_K" } )
+    assert check["ok"], check
+    derived = { s["name"]: s for s in ok( client, "sym_list", { "library": "Parts" } )["symbols"] }["HDR_K"]
+    assert derived["reference"] == "J" and derived["footprint"] == "Lib:HDR"
+
+
+# F4, F5 -----------------------------------------------------------------------------------------
+
+def test_sheet_paths_and_reused_sheet_pins( client, tmp_path ):
+    new_project( client, tmp_path / "sheets" )
+    first = ok( client, "sch_sheet_add", { "name": "ch1", "sheetFile": "amp.kicad_sch", "position": { "x": 50, "y": 50 },
+                                           "pins": [ { "name": "IN", "side": "left", "shape": "input" },
+                                                     { "name": "OUT", "side": "right", "shape": "output" } ] } )
+    assert first["sheetPath"] == "/ch1/"
+    assert [ s["path"] for s in ok( client, "sch_hierarchy" )["sheets"] ] == [ "/", "/ch1/" ]
+
+    # Both the documented form and the file-name form name the sheet.
+    ok( client, "sch_symbol_place", { "libId": "Device:R", "position": { "x": 80, "y": 80 }, "sheet": "/ch1/" } )
+    ok( client, "sch_symbol_place", { "libId": "Device:R", "position": { "x": 90, "y": 80 }, "sheet": "sheets/ch1/" } )
+    items = ok( client, "sch_query", { "sheet": "/ch1/", "type": "symbol" } )["items"]
+    assert len( items ) == 2 and { i["sheet"] for i in items } == { "/ch1/" }
+
+    # A sheet cannot contain itself (the sheet used last is /ch1/, whose file is amp.kicad_sch).
+    assert "cannot contain itself" in fail( client, "sch_sheet_add", { "name": "loop", "sheetFile": "amp.kicad_sch",
+                                                                        "position": { "x": 120, "y": 120 } } )
+
+    # A second instance of the file gets the file's hierarchical labels as its pins.
+    ok( client, "sch_sheet_add", { "name": "ch2", "sheetFile": "amp.kicad_sch", "position": { "x": 50, "y": 90 },
+                                   "sheet": "/" } )
+    sheets = { s["name"]: s for s in ok( client, "sch_query", { "sheet": "/", "type": "sheet" } )["items"] }
+    assert sorted( p["name"] for p in sheets["ch2"]["pins"] ) == [ "IN", "OUT" ]
+
+
+# F7, O4 -----------------------------------------------------------------------------------------
+
+def test_multi_unit_symbol_reference( client, tmp_path ):
+    new_project( client, tmp_path / "units" )
+    two_unit_part( client )
+    ok( client, "sch_symbol_place", { "libId": "Parts:DUO", "unit": 1, "position": { "x": 60, "y": 60 } } )
+    ok( client, "sch_symbol_place", { "libId": "Parts:DUO", "unit": 2, "position": { "x": 60, "y": 100 },
+                                      "reference": "U1" } )
+
+    units = ok( client, "sch_query", { "reference": "U1" } )["items"]
+    assert len( units ) == 2 and { u["reference"] for u in units } == { "U1" }
+    assert sorted( u["unit"] for u in units ) == [ 1, 2 ]
+    assert all( "unitName" in u for u in units )
+
+    ok( client, "sch_symbol_set", { "item": "U1", "value": "DUO-2", "fields": { "MPN": "X1" } } )
+    assert { u["value"] for u in ok( client, "sch_query", { "reference": "U1" } )["items"] } == { "DUO-2" }
+    assert "unit" in fail( client, "sch_symbol_set", { "item": "U1", "unit": 2 } )

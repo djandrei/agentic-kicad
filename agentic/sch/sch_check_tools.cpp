@@ -626,7 +626,7 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
 
                      TOOL_RESULT result;
                      result.content.push_back( ImageContent( base64( data ), "image/png" ) );
-                     JSON info{ { "sheet", utf8( path.PathHumanReadable( false ) ) },
+                     JSON info{ { "sheet", utf8( path.PathHumanReadable() ) },
                                 { "width", image.GetWidth() },
                                 { "height", image.GetHeight() },
                                 { "pixelsPerMm", std::round( image.GetWidth() / ( x2 - x1 ) * 1000 ) / 1000 },
@@ -673,12 +673,14 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
                              [&]() -> JSON
                              {
                                  SCH_SCREENS screens( s.Schematic().Root() );
+                                 SCH_SCREEN* root = s.Schematic().RootScreen();
 
                                  for( size_t i = 0; i < screens.GetCount(); ++i )
                                  {
                                      TITLE_BLOCK& tb = screens.GetScreen( i )->GetTitleBlock();
 
-                                     if( aArgs.contains( "title" ) && i == 0 )
+                                     // The title is the root sheet's (the first screen is the virtual root).
+                                     if( aArgs.contains( "title" ) && screens.GetScreen( i ) == root )
                                          tb.SetTitle( wx( aArgs["title"] ) );
 
                                      if( aArgs.contains( "date" ) )

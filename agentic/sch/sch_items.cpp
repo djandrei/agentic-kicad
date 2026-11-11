@@ -126,19 +126,23 @@ nlohmann::json SchItemJson( const SCH_ITEM* aItem, const SCH_SHEET_PATH& aPath )
 {
     nlohmann::json out{ { "kiid", utf8( aItem->m_Uuid.AsString() ) },
                         { "type", typeName( aItem ) },
-                        { "sheet", utf8( aPath.PathHumanReadable( false ) ) } };
+                        { "sheet", utf8( aPath.PathHumanReadable() ) } };
 
     switch( aItem->Type() )
     {
     case SCH_SYMBOL_T:
     {
         const SCH_SYMBOL* symbol = static_cast<const SCH_SYMBOL*>( aItem );
-        out["reference"] = utf8( symbol->GetRef( &aPath, true ) );
+        out["reference"] = utf8( symbol->GetRef( &aPath, false ) );
         out["value"] = utf8( symbol->GetValue( &aPath, FOR_GUI ) );
         out["libId"] = utf8( symbol->GetLibId().Format() );
         out["footprint"] = utf8( symbol->GetFootprintFieldText( &aPath, FOR_GUI ) );
         out["position"] = SchPointJson( symbol->GetPosition() );
         out["unit"] = symbol->GetUnit();
+
+        // The unit's own name or letter (U1A, U1Logic), so a reference names all of its units.
+        if( symbol->GetUnitCount() > 1 )
+            out["unitName"] = utf8( symbol->SubReference( symbol->GetUnit(), false ) );
         out["rotation"] = static_cast<int>( symbol->GetOrientationProp() ) == SYMBOL_ANGLE_90    ? 90
                           : static_cast<int>( symbol->GetOrientationProp() ) == SYMBOL_ANGLE_180 ? 180
                           : static_cast<int>( symbol->GetOrientationProp() ) == SYMBOL_ANGLE_270 ? 270
@@ -297,10 +301,12 @@ SCH_SHEET_PATH SchSheet( SCH_DOC_SESSION& aSession, const std::string& aSheet )
 
     for( const SCH_SHEET_PATH& path : schematic.Hierarchy() )
     {
-        std::string human = utf8( path.PathHumanReadable( false ) );
-
-        if( human == aSheet || human + "/" == aSheet || ( aSheet == "/" && path.size() <= 1 ) )
-            return path;
+        // The documented form ("/", "/power/") and the one with the root file name ("board/power/").
+        for( const std::string& human : { utf8( path.PathHumanReadable() ), utf8( path.PathHumanReadable( false ) ) } )
+        {
+            if( human == aSheet || human + "/" == aSheet )
+                return path;
+        }
 
         if( utf8( path.Last()->m_Uuid.AsString() ) == aSheet )
             return path;

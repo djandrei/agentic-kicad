@@ -386,8 +386,8 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
                  } } );
 
     tools.Add( { "sym_derive",
-                 "Create a symbol derived from another in the same library (same drawing and pins, its own name, "
-                 "value and fields).",
+                 "Create a symbol derived from another in the same library (same drawing and pins, its own name "
+                 "and value; it starts with the parent's reference, footprint, datasheet and user fields).",
                  "sym",
                  symSchema( { { "name", { { "type", "string" } } },
                               { "parent", { { "type", "string" } } },
@@ -411,6 +411,29 @@ void RegisterSymbolEditorTools( AGENT_SERVICES& aServices )
                                      throw TOOL_ERROR( "Derive from a root symbol, not from a derived one." );
 
                                  auto symbol = std::make_unique<LIB_SYMBOL>( wx( name ), &parent );
+
+                                 // As the symbol editor derives: the parent's fields (reference, footprint,
+                                 // datasheet and user fields) with their text, then the new value.
+                                 for( FIELD_T fieldId : MANDATORY_FIELDS )
+                                 {
+                                     SCH_FIELD* field = symbol->GetField( fieldId );
+                                     *field = *parent.GetField( fieldId );
+                                     field->SetParent( symbol.get() );
+                                 }
+
+                                 std::vector<SCH_FIELD*> parentFields;
+                                 parent.GetFields( parentFields );
+
+                                 for( SCH_FIELD* field : parentFields )
+                                 {
+                                     if( field->GetId() == FIELD_T::USER )
+                                     {
+                                         SCH_FIELD* copy = new SCH_FIELD( *field );
+                                         copy->SetParent( symbol.get() );
+                                         symbol->AddField( copy );
+                                     }
+                                 }
+
                                  symbol->GetValueField().SetText( wx( aArgs.value( "value", name ) ) );
 
                                  if( aArgs.contains( "description" ) )

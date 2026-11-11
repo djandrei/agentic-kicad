@@ -436,7 +436,7 @@ Rotate items by a multiple of 90 degrees (counterclockwise by default) about the
 
 ### `sch_sheet_add`
 
-Add a hierarchical sub-sheet: a sheet symbol on the parent sheet with a new sheet file (or an existing one, which then becomes another instance). Each pin {name, side: left|right|top|bottom, shape: input|output|bidirectional|passive} gets a hierarchical label inside a new sub-sheet.
+Add a hierarchical sub-sheet: a sheet symbol on the parent sheet with a new sheet file (or an existing one, which then becomes another instance). Each pin {name, side: left|right|top|bottom, shape: input|output|bidirectional|passive} gets a hierarchical label inside a new sub-sheet. Without pins, another instance of an existing sheet gets one pin per hierarchical label of that sheet.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -470,7 +470,7 @@ Place a library symbol (Library:Symbol from symbol_search) at a position (mm, sn
 
 ### `sch_symbol_set`
 
-Change a placed symbol: value, footprint, reference, fields ({name: text}, null removes a user field), unit, dnp, excludeFromBom, excludeFromBoard, excludeFromSim.
+Change a placed symbol: value, footprint, reference, fields ({name: text}, null removes a user field), unit, dnp, excludeFromBom, excludeFromBoard, excludeFromSim. A reference (U1) changes every unit of a multi-unit symbol; U1A or a KIID names one unit.
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
@@ -567,7 +567,7 @@ Delete a symbol from a project symbol library.
 
 ### `sym_derive`
 
-Create a symbol derived from another in the same library (same drawing and pins, its own name, value and fields).
+Create a symbol derived from another in the same library (same drawing and pins, its own name and value; it starts with the parent's reference, footprint, datasheet and user fields).
 
 | Argument | Type | Required | Description |
 |---|---|---|---|
