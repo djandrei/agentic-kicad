@@ -145,6 +145,63 @@ def test_sim_model_needs_a_type_and_sim_run_reports_a_bad_circuit( client, tmp_p
     assert "load" in fail( client, "sim_run" )
 
 
+def test_sim_run_reports_an_aborted_transient( client, tmp_path ):
+    """A bridge rectifier charging 470 uF from an ideal source makes ngspice give up at the first
+    peak ("timestep too small"); sim_run returned ok with the 9 ms it had made of 60 ms."""
+    new_project( client, tmp_path / "bridge" )
+    ok( client, "lib_create", { "type": "symbol", "name": "Sources" } )
+    ok( client, "sym_create", { "library": "Sources", "name": "VSRC", "reference": "V", "value": "VSRC" } )
+    ok( client, "sym_pins_set", { "library": "Sources", "symbol": "VSRC", "pins": [
+        { "number": "1", "name": "+", "type": "passive", "side": "top" },
+        { "number": "2", "name": "-", "type": "passive", "side": "bottom" } ] } )
+    ok( client, "sch_symbol_place", { "libId": "Sources:VSRC", "position": { "x": 40, "y": 80 } } )
+
+    for x, y in ( ( 70, 60 ), ( 70, 100 ), ( 90, 60 ), ( 90, 100 ) ):
+        ok( client, "sch_symbol_place", { "libId": "Device:D", "position": { "x": x, "y": y }, "rotation": 90 } )
+
+    ok( client, "sch_symbol_place", { "libId": "Device:C", "position": { "x": 120, "y": 80 }, "value": "470u" } )
+    ok( client, "sch_symbol_place", { "libId": "Device:R", "position": { "x": 140, "y": 80 }, "value": "1k" } )
+    # D (pin 1 cathode, pin 2 anode): D1 AC1->OUT, D2 AC2->OUT, D3 GND->AC1, D4 GND->AC2.
+    for at, net in ( ( "V1.1", "AC1" ), ( "V1.2", "AC2" ), ( "D1.2", "AC1" ), ( "D1.1", "OUT" ), ( "D2.2", "AC2" ),
+                     ( "D2.1", "OUT" ), ( "D3.1", "AC1" ), ( "D4.1", "AC2" ), ( "C1.1", "OUT" ), ( "R1.1", "OUT" ) ):
+        ok( client, "sch_label_add", { "kind": "local", "text": net, "at": at } )
+
+    for at in ( "D3.2", "D4.2", "C1.2", "R1.2" ):
+        ok( client, "sch_label_add", { "kind": "power", "text": "GND", "at": at } )
+
+    ok( client, "sim_model_set", { "item": "V1", "device": "V", "type": "SIN", "params": "dc=0 ampl=17 f=50" } )
+
+    for d in ( "D1", "D2", "D3", "D4" ):
+        ok( client, "sim_model_set", { "item": d, "device": "D", "params": { "is": "1e-9", "n": "1.8", "rs": "0.05" },
+                                       "pins": { "1": "2", "2": "1" } } )
+
+    ok( client, "sim_analysis_set", { "type": "tran", "step": "50u", "stop": "60m" } )
+    message = fail( client, "sim_run" )
+    assert "stopped the analysis" in message and "imestep too small" in message, message
+
+    # With realistic diode resistance the same run completes.
+    for d in ( "D1", "D2", "D3", "D4" ):
+        ok( client, "sim_model_set", { "item": d, "device": "D", "params": { "is": "1e-9", "n": "1.8", "rs": "1" },
+                                       "pins": { "1": "2", "2": "1" } } )
+
+    ok( client, "sim_run" )
+    assert abs( ok( client, "sim_signal", { "vector": "out", "points": 3 } )["x"][-1] - 0.06 ) < 1e-9
+
+
+def test_annotate_start_number_is_the_first_number( client, tmp_path ):
+    new_project( client, tmp_path / "annotate" )
+    for x in ( 50, 70, 90 ):
+        ok( client, "sch_symbol_place", { "libId": "Device:R", "position": { "x": x, "y": 50 } } )
+
+    def refs():
+        return sorted( i["reference"] for i in ok( client, "sch_query", { "type": "symbol" } )["items"] )
+
+    ok( client, "sch_annotate", { "reset": True, "startNumber": 1 } )
+    assert refs() == [ "R1", "R2", "R3" ]
+    ok( client, "sch_annotate", { "reset": True, "startNumber": 10 } )
+    assert refs() == [ "R10", "R11", "R12" ]
+
+
 # F10 --------------------------------------------------------------------------------------------
 
 def test_autoplace_default_places_only_footprints_off_the_board( client, tmp_path ):
@@ -306,6 +363,10 @@ def test_coupled_line_synthesis_needs_its_targets( client, tmp_path ):
     assert "z0Odd" in fail( client, "calc_run", { "calculator": "transmission_line", "inputs": {
         "type": "coupled_microstrip", "mode": "synthesize",
         "parameters": { "zDiff": 90, "h": 0.2, "t": 0.035, "epsilonR": 4.5, "frequency": 1e9 } } } )
+
+    unknown = fail( client, "calc_run", { "calculator": "transmission_line", "inputs": {
+        "type": "coax", "parameters": { "din": 0.9 } } } )
+    assert "innerDiameter" in unknown and "outerDiameter" in unknown, unknown
 
     pair = ok( client, "calc_run", { "calculator": "transmission_line", "inputs": {
         "type": "coupled_microstrip", "mode": "synthesize",

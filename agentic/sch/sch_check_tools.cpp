@@ -265,11 +265,11 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
 
     tools.Add( { "sch_annotate",
                  "Give references to unannotated symbols (R?, U?), or renumber all with reset. scope all or sheet; "
-                 "order x (left to right) or y (top to bottom); startNumber.",
+                 "order x (left to right) or y (top to bottom); startNumber is the first number (default 1).",
                  "sch",
                  schSchema( { { "scope", { { "type", "string" }, { "enum", { "all", "sheet" } } } },
                               { "order", { { "type", "string" }, { "enum", { "x", "y" } } } },
-                              { "startNumber", { { "type", "integer" }, { "minimum", 0 } } },
+                              { "startNumber", { { "type", "integer" }, { "minimum", 1 } } },
                               { "reset", { { "type", "boolean" } } },
                               { "sheet", { { "type", "string" } } } } ),
                  [&aServices]( const JSON& aArgs, TOOL_CONTEXT& )
@@ -314,8 +314,9 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
                                          references, std::move( locked ), sch,
                                          sheetOnly ? ANNOTATE_CURRENT_SHEET : ANNOTATE_ALL,
                                          aArgs.value( "order", "x" ) == "y" ? SORT_BY_Y_POSITION : SORT_BY_X_POSITION,
-                                         INCREMENTAL_BY_REF, aArgs.value( "startNumber", 0 ),
-                                         aArgs.value( "reset", false ),
+                                         INCREMENTAL_BY_REF,
+                                         // KiCad numbers from the first free number after this one.
+                                         aArgs.value( "startNumber", 1 ) - 1, aArgs.value( "reset", false ),
                                          [&]( SCH_REFERENCE& aRef )
                                          {
                                              aEdit.Modify( aRef.GetSymbol(), aRef.GetSheetPath().LastScreen() );
@@ -339,7 +340,8 @@ void RegisterSchCheckTools( AGENT_SERVICES& aServices )
                                      }
                                  }
 
-                                 if( renamed.empty() )
+                                 // Renumbering that lands on the same references is not an error.
+                                 if( renamed.empty() && !aArgs.value( "reset", false ) )
                                      throw TOOL_ERROR( "Every symbol is already annotated (use reset to renumber)." );
 
                                  return JSON{ { "renamed", renamed } };

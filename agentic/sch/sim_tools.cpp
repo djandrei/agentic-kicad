@@ -41,6 +41,7 @@
 #include <sim/spice_circuit_model.h>
 #include <sim/spice_settings.h>
 #include <sim/spice_simulator.h>
+#include <sim/spice_value.h>
 
 #include <wx/base64.h>
 #include <wx/filename.h>
@@ -136,6 +137,38 @@ namespace
 
         throw TOOL_ERROR( "'" + aType + "' is not a type of " + aDevice + "; its types are " + join( valid )
                           + ( std::find( valid.begin(), valid.end(), "" ) != valid.end() ? " (or none)." : "." ) );
+    }
+
+
+    /// Where a transient (.tran step stop) or DC sweep (.dc source start stop step) must end;
+    /// nothing for other analyses.
+    std::optional<double> analysisEnd( const std::string& aCommand )
+    {
+        std::istringstream       in( aCommand );
+        std::vector<std::string> words;
+
+        for( std::string word; in >> word; )
+            words.push_back( word );
+
+        if( words.size() >= 3 && wxString( words[0] ).Lower() == wxS( ".tran" ) )
+            return SPICE_VALUE( wx( words[2] ) ).ToDouble();
+
+        if( words.size() >= 5 && wxString( words[0] ).Lower() == wxS( ".dc" ) )
+            return SPICE_VALUE( wx( words[3] ) ).ToDouble();
+
+        return std::nullopt;
+    }
+
+
+    /// The last \a aCount lines of \a aText.
+    std::string lastLines( const std::string& aText, size_t aCount )
+    {
+        size_t pos = aText.size();
+
+        for( size_t n = 0; n <= aCount && pos != std::string::npos && pos > 0; ++n )
+            pos = aText.rfind( '\n', pos - 1 );
+
+        return pos == std::string::npos || pos == 0 ? aText : aText.substr( pos + 1 );
     }
 
 
@@ -1020,8 +1053,25 @@ void RegisterSimulatorTools( AGENT_SERVICES& aServices )
                       throw TOOL_ERROR( "ngspice produced no results:\n" + state.console );
 
                   const SIM_TYPE type = SPICE_CIRCUIT_MODEL::CommandToSimType( wx( command ) );
+                  const wxString xAxis = sim->GetXAxis( type );
+
+                  // ngspice can give up part-way (e.g. "timestep too small") and still leave the
+                  // points it made: a transient or DC sweep must end where the analysis asked.
+                  if( std::optional<double> stop = analysisEnd( command ) )
+                  {
+                      const std::vector<double> x = sim->GetRealVector( utf8( xAxis ) );
+                      const double              tolerance = 1e-6 * std::max( std::fabs( *stop ), 1e-12 );
+
+                      if( !x.empty() && std::fabs( x.back() - *stop ) > tolerance )
+                      {
+                          throw TOOL_ERROR( "ngspice stopped the analysis at " + std::to_string( x.back() ) + " of "
+                                            + std::to_string( *stop ) + " (" + utf8( xAxis ) + "); its messages:\n"
+                                            + lastLines( state.console, 30 ) );
+                      }
+                  }
+
                   state.lastCommand = command;
-                  state.xAxis = utf8( sim->GetXAxis( type ) );
+                  state.xAxis = utf8( xAxis );
                   state.runs++;
 
                   JSON out{ { "analysis", command },

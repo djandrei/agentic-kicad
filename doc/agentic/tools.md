@@ -236,7 +236,7 @@ Versions of this server, of KiCad and of the MCP protocol in use.
 
 ### `sch_annotate`
 
-Give references to unannotated symbols (R?, U?), or renumber all with reset. scope all or sheet; order x (left to right) or y (top to bottom); startNumber.
+Give references to unannotated symbols (R?, U?), or renumber all with reset. scope all or sheet; order x (left to right) or y (top to bottom); startNumber is the first number (default 1).
 
 | Argument | Type | Required | Description |
 |---|---|---|---|

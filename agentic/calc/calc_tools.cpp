@@ -217,7 +217,14 @@ namespace
             auto it = TL_PARAMS.find( name );
 
             if( it == TL_PARAMS.end() || !v.is_number() )
-                throw TOOL_ERROR( "Unknown or non-numeric parameter '" + name + "'." );
+            {
+                std::string known;
+
+                for( const auto& [paramName, param] : TL_PARAMS )
+                    known += ( known.empty() ? "" : ", " ) + paramName;
+
+                throw TOOL_ERROR( "Unknown or non-numeric parameter '" + name + "'. Parameters: " + known + "." );
+            }
 
             const double si = TL_LENGTHS.count( it->second ) ? v.get<double>() * MM : v.get<double>();
 
