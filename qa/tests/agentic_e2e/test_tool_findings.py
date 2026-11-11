@@ -456,3 +456,33 @@ def test_stackup_names_and_plain_rule_errors( client, tmp_path ):
 
     message = fail( client, "pcb_rules_set", { "customRules": "(version 1)\n(rule a (constraint clearance (min 1mm))\n" } )
     assert "<a" not in message and "line" in message
+
+
+# Round 3: engineering changes (eco_logger) and a high-speed board (hs_board) --------------------
+
+def test_update_keeps_renumbered_parts_and_reports_left_copper( client, tmp_path ):
+    """A renumbered part was taken for a new one and moved to the origin row; copper of removed
+    parts stays as in KiCad, the update reports it and pcb_cleanup removes it."""
+    led_board( client, tmp_path / "eco" )
+    assert ok( client, "pcb_route", { "from": "R1.2", "to": "D1.2" } )["completed"]
+    ok( client, "sch_symbol_set", { "item": "R1", "reference": "R7" } )
+    update = ok( client, "pcb_update_from_schematic" )
+    assert update["footprintsAdded"] == [] and update["footprintsRemoved"] == [] and update["danglingCopper"] == 0, update
+    assert position( ok( client, "pcb_query", { "reference": "R7" } )["items"][0] ) == ( 110, 110 )
+
+    ok( client, "sch_delete", { "items": [ "D1" ] } )
+    update = ok( client, "pcb_update_from_schematic" )
+    assert update["footprintsRemoved"] == [ "D1" ] and update["danglingCopper"] > 0, update
+    assert "pcb_cleanup" in update["note"]
+
+    tracks = ok( client, "pcb_query", { "type": "track" } )["items"]
+    assert tracks
+    dry = ok( client, "pcb_cleanup", { "dryRun": True } )
+    assert dry["dryRun"] and dry["counts"].get( "dangling_track", 0 ) >= 1, dry
+    assert len( ok( client, "pcb_query", { "type": "track" } )["items"] ) == len( tracks )
+
+    clean = ok( client, "pcb_cleanup" )
+    assert not clean["dryRun"] and clean["counts"].get( "dangling_track", 0 ) >= 1, clean
+    assert ok( client, "pcb_query", { "type": "track" } )["items"] == []
+    assert ok( client, "pcb_cleanup", { "refillZones": False } )["changes"] == []
+

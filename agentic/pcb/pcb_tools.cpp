@@ -32,6 +32,7 @@
 #include <board_commit.h>
 #include <board_design_settings.h>
 #include <board_stackup_manager/board_stackup.h>
+#include <cleanup_item.h>
 #include <connectivity/connectivity_data.h>
 #include <drc/drc_engine.h>
 #include <drc/drc_rule_parser.h>
@@ -48,6 +49,7 @@
 #include <pcb_track.h>
 #include <project_pcb.h>
 #include <reporter.h>
+#include <tracks_cleaner.h>
 #include <richio.h>
 #include <tool/tool_manager.h>
 #include <tools/zone_filler_tool.h>
@@ -203,6 +205,85 @@ JSON PcbMutate( AGENT_PROJECT& aProject, BOARD_DOC_SESSION& aSession, const std:
 }
 
 
+namespace
+{
+    std::string cleanupKind( int aCode )
+    {
+        switch( aCode )
+        {
+        case CLEANUP_SHORTING_TRACK: return "shorting_track";
+        case CLEANUP_SHORTING_VIA: return "shorting_via";
+        case CLEANUP_REDUNDANT_VIA: return "redundant_via";
+        case CLEANUP_DUPLICATE_TRACK: return "duplicate_track";
+        case CLEANUP_MERGE_TRACKS: return "merged_tracks";
+        case CLEANUP_DANGLING_TRACK: return "dangling_track";
+        case CLEANUP_DANGLING_VIA: return "dangling_via";
+        case CLEANUP_ZERO_LENGTH_TRACK: return "zero_length_track";
+        case CLEANUP_TRACK_IN_PAD: return "track_in_pad";
+        default: return "other";
+        }
+    }
+
+
+    /// Run KiCad's track cleaner (Cleanup Tracks & Vias) with the agent's flags. A dry run marks
+    /// the items it would delete; the marks are cleared again.
+    std::vector<std::shared_ptr<CLEANUP_ITEM>> runCleaner( BOARD& aBoard, BOARD_COMMIT& aCommit, const JSON& aArgs,
+                                                           bool aDryRun )
+    {
+        std::vector<std::shared_ptr<CLEANUP_ITEM>> items;
+        TRACKS_CLEANER                             cleaner( &aBoard, aCommit );
+
+        aBoard.BuildConnectivity();
+        cleaner.CleanupBoard( aDryRun, &items, aArgs.value( "shorts", true ), aArgs.value( "redundantVias", true ),
+                              aArgs.value( "mergeSegments", true ), aArgs.value( "dangling", true ),
+                              aArgs.value( "tracksInPads", false ), aArgs.value( "danglingVias", true ) );
+
+        if( aDryRun )
+        {
+            for( PCB_TRACK* track : aBoard.Tracks() )
+                track->ClearFlags( IS_DELETED );
+        }
+
+        return items;
+    }
+
+
+    /// The cleaner's findings, with the items as they were before it ran.
+    JSON cleanupJson( const std::vector<std::shared_ptr<CLEANUP_ITEM>>& aItems, const std::map<KIID, JSON>& aBefore )
+    {
+        JSON changes = JSON::array();
+        JSON counts = JSON::object();
+
+        for( const std::shared_ptr<CLEANUP_ITEM>& item : aItems )
+        {
+            const std::string kind = cleanupKind( item->GetErrorCode() );
+            JSON              change{ { "kind", kind } };
+            auto              it = aBefore.find( item->GetMainItemID() );
+
+            change["item"] = it != aBefore.end() ? it->second : JSON( utf8( item->GetMainItemID().AsString() ) );
+            changes.push_back( change );
+            counts[kind] = counts.value( kind, 0 ) + 1;
+        }
+
+        return JSON{ { "changes", changes }, { "counts", counts } };
+    }
+
+
+    void fillZones( BOARD_DOC_SESSION& aSession, AGENT_SERVICES& aServices, TOOL_CONTEXT& aContext )
+    {
+        TOOL_MANAGER* tools = aSession.ToolManager();
+
+        if( !tools->FindTool( ZONE_FILLER_TOOL_NAME ) )
+            tools->RegisterTool( new ZONE_FILLER_TOOL );
+
+        AGENT_PROGRESS_REPORTER progress( aContext, aServices.ProgressSink() );
+
+        if( !tools->GetTool<ZONE_FILLER_TOOL>()->FillAllZones( nullptr, &progress, true ) )
+            throw TOOL_ERROR( aContext.IsCancelled() ? "Cancelled." : "The zone fill failed." );
+    }
+} // namespace
+
+
 void RegisterPcbEditTools( AGENT_SERVICES& aServices )
 {
     TOOL_REGISTRY& tools = aServices.Tools();
@@ -212,7 +293,8 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
     tools.Add( { "pcb_update_from_schematic",
                  "Update the board from the project's schematic, as KiCad's Update PCB from Schematic does: adds "
                  "missing footprints (from the symbols' footprint fields, placed in a row near the origin), updates "
-                 "values and nets, removes footprints of deleted symbols. Returns what changed.",
+                 "values and nets, removes footprints of deleted symbols. Their tracks and vias stay, as in KiCad: "
+                 "danglingCopper counts what now ends unconnected (pcb_cleanup removes it). Returns what changed.",
                  "pcb",
                  pcbSchema( { { "deleteUnused",
                                 { { "type", "boolean" },
@@ -248,10 +330,12 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                              *project, s, "pcb_update_from_schematic", aArgs, true,
                              [&]( BOARD_COMMIT& ) -> JSON
                              {
-                                 std::set<wxString> before;
+                                 // Footprints are told apart by UUID: a renumbered one keeps it (so it is
+                                 // not new), and so does one whose package is swapped.
+                                 std::map<KIID, wxString> before;
 
                                  for( FOOTPRINT* fp : s.Board().Footprints() )
-                                     before.insert( fp->GetReference() );
+                                     before[fp->m_Uuid] = fp->GetReference();
 
                                  WX_STRING_REPORTER    reporter;
                                  BOARD_NETLIST_UPDATER updater( s.ToolManager(), &s.Board() );
@@ -268,9 +352,13 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                                  JSON added = JSON::array();
                                  int  x = PcbIu( 10 );
 
+                                 std::set<KIID> after;
+
                                  for( FOOTPRINT* fp : s.Board().Footprints() )
                                  {
-                                     if( before.count( fp->GetReference() ) )
+                                     after.insert( fp->m_Uuid );
+
+                                     if( before.count( fp->m_Uuid ) )
                                          continue;
 
                                      BOX2I box = fp->GetBoundingBox( false );
@@ -279,8 +367,34 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                                      added.push_back( utf8( fp->GetReference() ) );
                                  }
 
+                                 JSON removed = JSON::array();
+
+                                 for( const auto& [uuid, reference] : before )
+                                 {
+                                     if( !after.count( uuid ) )
+                                         removed.push_back( utf8( reference ) );
+                                 }
+
                                  s.Board().BuildConnectivity();
                                  s.MarkModified();
+
+                                 // Removed footprints leave their tracks and vias behind, as in KiCad.
+                                 int          dangling = 0;
+                                 JSON         danglingArgs{ { "shorts", false },
+                                                            { "redundantVias", false },
+                                                            { "mergeSegments", false },
+                                                            { "dangling", true },
+                                                            { "danglingVias", true } };
+                                 BOARD_COMMIT probe( s.ToolManager() );
+
+                                 for( const auto& item : runCleaner( s.Board(), probe, danglingArgs, true ) )
+                                 {
+                                     if( item->GetErrorCode() == CLEANUP_DANGLING_TRACK
+                                         || item->GetErrorCode() == CLEANUP_DANGLING_VIA )
+                                     {
+                                         dangling++;
+                                     }
+                                 }
 
                                  wxString          log = reporter.GetMessages();
                                  JSON              lines = JSON::array();
@@ -289,9 +403,18 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                                  while( tokens.HasMoreTokens() )
                                      lines.push_back( utf8( tokens.GetNextToken() ) );
 
-                                 return JSON{ { "footprintsAdded", added },
-                                              { "report", lines },
-                                              { "footprints", s.Board().Footprints().size() } };
+                                 JSON out{ { "footprintsAdded", added },
+                                           { "footprintsRemoved", removed },
+                                           { "report", lines },
+                                           { "footprints", s.Board().Footprints().size() },
+                                           { "danglingCopper", dangling } };
+
+                                 if( dangling > 0 )
+                                     out["note"] = std::to_string( dangling )
+                                                   + " tracks or vias now end unconnected (copper of removed "
+                                                     "footprints); pcb_cleanup removes them.";
+
+                                 return out;
                              } );
 
                      return TOOL_RESULT::Data( result );
@@ -1075,6 +1198,74 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                                               { "ratsnest",
                                                 PcbRatsnestDelta( before, PCB_RATSNEST::Take( s.Board() ) ) } };
                              } );
+
+                     return TOOL_RESULT::Data( result );
+                 } } );
+
+    tools.Add( { "pcb_cleanup",
+                 "Clean up tracks and vias as KiCad's Cleanup Tracks & Vias does: remove tracks and vias that lead "
+                 "nowhere (dangling, e.g. left by removed footprints), redundant vias, tracks shorting two nets, and "
+                 "merge collinear segments; tracksInPads also removes tracks inside a pad. Each flag defaults to the "
+                 "dialog's default. Zones are filled first (refillZones, default true) so copper ending in a plane "
+                 "counts as connected. dryRun lists what would change, with the zones as they are. Locked items "
+                 "stay.",
+                 "pcb",
+                 pcbSchema( { { "dangling", { { "type", "boolean" } } },
+                              { "danglingVias", { { "type", "boolean" } } },
+                              { "redundantVias", { { "type", "boolean" } } },
+                              { "shorts", { { "type", "boolean" } } },
+                              { "mergeSegments", { { "type", "boolean" } } },
+                              { "tracksInPads", { { "type", "boolean" } } },
+                              { "refillZones", { { "type", "boolean" } } },
+                              { "dryRun", { { "type", "boolean" } } } } ),
+                 [&aServices]( const JSON& aArgs, TOOL_CONTEXT& aContext )
+                 {
+                     AGENT_PROJECT*     project = nullptr;
+                     BOARD_DOC_SESSION& s = session( aServices, aArgs, &project );
+                     BOARD&             board = s.Board();
+
+                     auto snapshot = [&]()
+                     {
+                         std::map<KIID, JSON> items;
+
+                         for( PCB_TRACK* track : board.Tracks() )
+                             items[track->m_Uuid] = PcbItemJson( board, track );
+
+                         return items;
+                     };
+
+                     const bool refill = aArgs.value( "refillZones", true );
+
+                     if( aArgs.value( "dryRun", false ) || !refill )
+                     {
+                         BOARD_COMMIT probe( s.ToolManager() );
+                         JSON         found = cleanupJson( runCleaner( board, probe, aArgs, true ), snapshot() );
+                         found["dryRun"] = true;
+
+                         // Nothing to do, or only asked what would change: the board is untouched.
+                         if( aArgs.value( "dryRun", false ) || found["changes"].empty() )
+                             return TOOL_RESULT::Data( found );
+                     }
+
+                     JSON result = PcbMutate( *project, s, "pcb_cleanup", aArgs, true,
+                                              [&]( BOARD_COMMIT& aCommit ) -> JSON
+                                              {
+                                                  if( refill )
+                                                  {
+                                                      fillZones( s, aServices, aContext );
+                                                      s.MarkModified();
+                                                  }
+
+                                                  const std::map<KIID, JSON> before = snapshot();
+                                                  JSON out = cleanupJson( runCleaner( board, aCommit, aArgs, false ),
+                                                                          before );
+
+                                                  if( refill && !out["changes"].empty() )
+                                                      fillZones( s, aServices, aContext );
+
+                                                  out["dryRun"] = false;
+                                                  return out;
+                                              } );
 
                      return TOOL_RESULT::Data( result );
                  } } );

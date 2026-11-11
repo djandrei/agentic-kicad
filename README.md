@@ -2,7 +2,7 @@
 
 This fork of [KiCad](https://kicad.org) lets an AI agent design electronics with KiCad's own
 engine. An MCP server runs inside KiCad, and every program is available to the agent as
-structured tools (147 of them): schematics and hierarchy, symbol and footprint libraries,
+structured tools (148 of them): schematics and hierarchy, symbol and footprint libraries,
 boards with interactive routing, length tuning and zones, ERC and DRC, SPICE simulation, 3D,
 Gerbers, drawing sheets, the calculator and footprint assignment. Any MCP client works,
 for example Claude Code:
