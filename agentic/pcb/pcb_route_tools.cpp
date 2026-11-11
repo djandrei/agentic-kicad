@@ -33,6 +33,7 @@
 #include <board.h>
 #include <board_commit.h>
 #include <board_design_settings.h>
+#include <cleanup_item.h>
 #include <drc/drc_engine.h>
 #include <footprint.h>
 #include <netinfo.h>
@@ -49,6 +50,7 @@
 #include <router/pns_routing_settings.h>
 #include <router/pns_sizes_settings.h>
 #include <specctra_import_export/specctra.h>
+#include <tracks_cleaner.h>
 #include <view/view_overlay.h>
 
 #include <cmath>
@@ -326,6 +328,78 @@ namespace
     }
 
 
+    /// The KIIDs of the board's tracks and vias.
+    std::set<KIID> copperIds( BOARD& aBoard )
+    {
+        std::set<KIID> ids;
+
+        for( PCB_TRACK* track : aBoard.Tracks() )
+            ids.insert( track->m_Uuid );
+
+        return ids;
+    }
+
+
+    /// The nets that have tracks or vias leading nowhere, found as KiCad's cleanup would (a dry
+    /// run; the marks it leaves are cleared).
+    std::set<int> netsWithDanglingCopper( BOARD_DOC_SESSION& aSession )
+    {
+        BOARD&                                     board = aSession.Board();
+        BOARD_COMMIT                               probe( aSession.ToolManager() );
+        std::vector<std::shared_ptr<CLEANUP_ITEM>> items;
+        TRACKS_CLEANER                             cleaner( &board, probe );
+        std::set<int>                              nets;
+
+        board.BuildConnectivity();
+        cleaner.CleanupBoard( true, &items, false, false, false, true, false, true );
+
+        for( PCB_TRACK* track : board.Tracks() )
+        {
+            if( track->HasFlag( IS_DELETED ) )
+                nets.insert( track->GetNetCode() );
+
+            track->ClearFlags( IS_DELETED );
+        }
+
+        return nets;
+    }
+
+
+    /// A shove can break a track of another line that it cannot move cleanly, leaving copper that
+    /// leads nowhere. Remove the tracks and vias made by this call (not in \a aBefore) that end
+    /// unconnected, back to the first pad, via or junction, with KiCad's track cleaner limited to
+    /// them: connectivity does not change. Nets in \a aKeep (copper leading nowhere already before
+    /// the call, such as a stub drawn on purpose) are left alone. Returns how many were removed.
+    int trimDanglingCopper( BOARD_DOC_SESSION& aSession, const std::set<KIID>& aBefore, const std::set<int>& aKeep )
+    {
+        BOARD&                                     board = aSession.Board();
+        BOARD_COMMIT                               commit( aSession.ToolManager() );
+        std::vector<std::shared_ptr<CLEANUP_ITEM>> items;
+        TRACKS_CLEANER                             cleaner( &board, commit );
+
+        cleaner.SetFilter(
+                [&]( BOARD_CONNECTED_ITEM* aItem )
+                {
+                    return aBefore.count( aItem->m_Uuid ) > 0 || aKeep.count( aItem->GetNetCode() ) > 0;
+                } );
+
+        cleaner.CleanupBoard( false, &items, false, false, false, true, false, true );
+
+        if( !commit.Empty() )
+            commit.Push( wxS( "Trim dangling copper" ) );
+
+        int dangling = 0;
+
+        for( const std::shared_ptr<CLEANUP_ITEM>& item : items )
+        {
+            if( item->GetErrorCode() == CLEANUP_DANGLING_TRACK || item->GetErrorCode() == CLEANUP_DANGLING_VIA )
+                dangling++;
+        }
+
+        return dangling;
+    }
+
+
     /// The router starts and ends on the requested layer: a pad that is not on it (an SMD pad on
     /// the other side) would get a track under it that does not connect, so refuse instead.
     void requirePadOnLayer( BOARD& aBoard, const PAD* aPad, const std::string& aName, PCB_LAYER_ID aLayer )
@@ -351,8 +425,9 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
               "waypoints, on a copper layer the start pad is on (default: its side): walkaround (default) goes "
               "around obstacles, shove pushes other tracks aside. A waypoint with a layer places a via there and "
               "continues on that layer; the end pad must be on the last layer. Width and via size come from the "
-              "net class. Returns the tracks and vias made, whether the route reached the end, and the ratsnest "
-              "delta.",
+              "net class. Copper a shove leaves leading nowhere, on a net that had none, is removed "
+              "(danglingRemoved). Returns the tracks and vias made, whether the route reached the end, and the "
+              "ratsnest delta.",
               "pcb",
               pcbSchema( { { "from", { { "type", "string" }, { "description", "Start pad, e.g. U1.3." } } },
                            { "to", { { "type", "string" }, { "description", "End pad." } } },
@@ -411,8 +486,10 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                           *project, s,
                           "pcb_route " + aArgs["from"].get<std::string>() + " " + aArgs["to"].get<std::string>(), aArgs,
                           true,
-                          [&]( BOARD_COMMIT& aCommit ) -> JSON
+                          [&]( BOARD_COMMIT& ) -> JSON
                           {
+                              const std::set<KIID> before = copperIds( board );
+                              const std::set<int>  danglingBefore = netsWithDanglingCopper( s );
                               ROUTER_RUN run( s, routingMode( aArgs.value( "mode", "walkaround" ) ),
                                               PNS::PNS_MODE_ROUTE_SINGLE );
                               PNS::ITEM* start = run.itemFor( fromPad );
@@ -503,17 +580,29 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                               const std::set<KIID> added( run.iface.AddedItems().begin(),
                                                           run.iface.AddedItems().end() );
                               int                  merged = 0;
-                              const std::set<KIID> doubled = removeDoubledCopper( board, aCommit, added, merged );
+
+                              // The merge and the trim each push their own commit, as the router does,
+                              // so the trim sees the merged copper on the board.
+                              BOARD_COMMIT mergeCommit( s.ToolManager() );
+                              removeDoubledCopper( board, mergeCommit, added, merged );
+
+                              if( !mergeCommit.Empty() )
+                                  mergeCommit.Push( wxS( "Merge doubled copper" ) );
+
+                              // A route that stopped short ends unconnected by design: keep it as it is.
+                              const int trimmed =
+                                      ( reached && fixed ) ? trimDanglingCopper( s, before, danglingBefore ) : 0;
 
                               for( const KIID& kiid : run.iface.AddedItems() )
                               {
-                                  if( doubled.count( kiid ) )
+                                  BOARD_ITEM* item = board.ResolveItem( kiid, true );
+
+                                  if( !item )
                                       continue;
 
                                   items.push_back( utf8( kiid.AsString() ) );
 
-                                  if( BOARD_ITEM* item = board.ResolveItem( kiid, true );
-                                      item && item->Type() == PCB_VIA_T )
+                                  if( item->Type() == PCB_VIA_T )
                                       vias++;
                               }
 
@@ -521,6 +610,7 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                                            { "tracksAdded", run.iface.Added() },
                                            { "vias", vias },
                                            { "overlapsMerged", merged },
+                                           { "danglingRemoved", trimmed },
                                            { "itemsRemoved", run.iface.Removed() },
                                            { "width", mm( sizes.TrackWidth() ) },
                                            { "items", items } };
@@ -674,6 +764,7 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                               constraint.SetOpt( target );
                               constraint.SetMax( target + tolerance );
                               settings.SetTargetLength( constraint );
+
                               placer->UpdateSettings( settings );
 
                               // Sweep the tuner along the track, as the mouse would.

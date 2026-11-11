@@ -486,3 +486,14 @@ def test_update_keeps_renumbered_parts_and_reports_left_copper( client, tmp_path
     assert ok( client, "pcb_query", { "type": "track" } )["items"] == []
     assert ok( client, "pcb_cleanup", { "refillZones": False } )["changes"] == []
 
+
+def test_shove_leaves_no_copper_leading_nowhere( client, fixture_project ):
+    """The shove of this route broke the +5V track next to J2.2 into two dead ends."""
+    ok( client, "project_open", { "path": str( fixture_project( "shove_stub" ) ) } )
+    before = ok( client, "pcb_unrouted", { "net": "+5V" } )["unrouted"]
+    route = ok( client, "pcb_route", { "from": "U2.6", "to": "J2.2", "mode": "shove" } )
+    assert route["completed"] and route["danglingRemoved"] > 0, route
+    drc = ok( client, "pcb_drc", { "severity": "all", "refillZones": False } )
+    assert [ v for v in drc["violations"] if v["type"] in ( "track_dangling", "via_dangling" ) ] == []
+    assert ok( client, "pcb_unrouted", { "net": "+5V" } )["unrouted"] == before
+
