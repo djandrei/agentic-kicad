@@ -26,6 +26,7 @@
 #include <board.h>
 #include <connectivity/connectivity_data.h>
 #include <footprint.h>
+#include <math/util.h>
 #include <netinfo.h>
 #include <pad.h>
 #include <pcb_shape.h>
@@ -197,7 +198,12 @@ nlohmann::json PcbItemJson( BOARD& aBoard, const BOARD_ITEM* aItem )
         out["type"] = aItem->Type() == PCB_ARC_T ? "arc" : "track";
         out["start"] = PcbPointJson( track->GetStart() );
         out["end"] = PcbPointJson( track->GetEnd() );
+
+        if( aItem->Type() == PCB_ARC_T )
+            out["mid"] = PcbPointJson( static_cast<const PCB_ARC*>( track )->GetMid() );
+
         out["width"] = mm( track->GetWidth() );
+        out["length"] = mm( KiROUND( track->GetLength() ) );
         break;
     }
 

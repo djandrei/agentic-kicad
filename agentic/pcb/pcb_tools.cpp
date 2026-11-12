@@ -36,6 +36,7 @@
 #include <connectivity/connectivity_data.h>
 #include <drc/drc_engine.h>
 #include <drc/drc_rule_parser.h>
+#include <math/util.h>
 #include <project/net_settings.h>
 #include <footprint.h>
 #include <footprint_library_adapter.h>
@@ -207,6 +208,33 @@ JSON PcbMutate( AGENT_PROJECT& aProject, BOARD_DOC_SESSION& aSession, const std:
 
 namespace
 {
+    /// The net's class from the project's net settings. NETINFO_ITEM keeps the class it had when
+    /// the board was loaded; netclasses_set changes the settings, not that copy.
+    std::shared_ptr<NETCLASS> netClassOf( BOARD& aBoard, const NETINFO_ITEM* aNet )
+    {
+        std::shared_ptr<NET_SETTINGS>& settings = aBoard.GetDesignSettings().m_NetSettings;
+        return aNet ? settings->GetEffectiveNetClass( aNet->GetNetname() ) : settings->GetDefaultNetclass();
+    }
+
+
+    /// The classes a net matched, as the user named them: the effective class of a net that
+    /// matches SE50 is "SE50,Default" (Default fills the fields SE50 leaves unset).
+    std::string netClassName( const NETCLASS& aClass )
+    {
+        std::string name;
+
+        for( const NETCLASS* part : aClass.GetConstituentNetclasses() )
+        {
+            if( part->IsDefault() && aClass.GetConstituentNetclasses().size() > 1 )
+                continue;
+
+            name += ( name.empty() ? "" : "," ) + utf8( part->GetName() );
+        }
+
+        return name.empty() ? utf8( aClass.GetName() ) : name;
+    }
+
+
     std::string cleanupKind( int aCode )
     {
         switch( aCode )
@@ -421,8 +449,9 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                  } } );
 
     tools.Add( { "pcb_query",
-                 "List board items, filtered by type (footprint, track, via, pad, zone, graphic, text, net), "
-                 "reference, net, layer or area {x1,y1,x2,y2}; paged with offset and limit.",
+                 "List board items, filtered by type (footprint, track, arc, via, pad, zone, graphic, text, net), "
+                 "reference, net, layer or area {x1,y1,x2,y2}; paged with offset and limit. Tracks and arcs give "
+                 "their length (arcs also mid); a net gives trackLength, its tracks' and arcs' total, and its vias.",
                  "pcb",
                  pcbSchema( { { "type", { { "type", "string" } } },
                               { "reference", { { "type", "string" } } },
@@ -450,11 +479,29 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
 
                              if( total++ >= offset && items.size() < limit )
                              {
+                                 // The copper's own length (tracks and arcs), as the board shows it; vias
+                                 // are counted, not measured.
+                                 double length = 0;
+                                 int    vias = 0;
+
+                                 for( PCB_TRACK* track : board.Tracks() )
+                                 {
+                                     if( track->GetNetCode() != net->GetNetCode() )
+                                         continue;
+
+                                     if( track->Type() == PCB_VIA_T )
+                                         vias++;
+                                     else
+                                         length += track->GetLength();
+                                 }
+
                                  items.push_back( { { "net", utf8( net->GetNetname() ) },
-                                                    { "netclass", utf8( net->GetNetClass()->GetName() ) },
+                                                    { "netclass", netClassName( *netClassOf( board, net ) ) },
                                                     { "pads", board.GetConnectivity()
                                                                       ->GetNetItems( net->GetNetCode(), { PCB_PAD_T } )
-                                                                      .size() } } );
+                                                                      .size() },
+                                                    { "trackLength", mm( KiROUND( length ) ) },
+                                                    { "vias", vias } } );
                              }
                          }
 
@@ -1007,7 +1054,7 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                      int width = aArgs.contains( "width" ) ? PcbLength( aArgs["width"], "width" ) : 0;
 
                      if( width <= 0 )
-                         width = net ? net->GetNetClass()->GetTrackWidth()
+                         width = net ? netClassOf( board, net )->GetTrackWidth()
                                      : board.GetDesignSettings().GetCurrentTrackWidth();
 
                      if( width <= 0 )
@@ -1053,9 +1100,7 @@ void RegisterPcbEditTools( AGENT_SERVICES& aServices )
                      BOARD_DOC_SESSION& s = session( aServices, aArgs, &project );
                      BOARD&             board = s.Board();
                      NETINFO_ITEM*      net = aArgs.contains( "net" ) ? PcbNet( board, aArgs["net"] ) : nullptr;
-                     const NETCLASS*    netclass =
-                             net ? net->GetNetClass()
-                                    : board.GetDesignSettings().m_NetSettings->GetDefaultNetclass().get();
+                     const std::shared_ptr<NETCLASS> netclass = netClassOf( board, net );
                      const int diameter = aArgs.contains( "diameter" ) ? PcbLength( aArgs["diameter"], "diameter" )
                                                                        : netclass->GetViaDiameter();
                      const int drill =

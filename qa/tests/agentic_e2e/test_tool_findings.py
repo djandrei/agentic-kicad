@@ -497,3 +497,33 @@ def test_shove_leaves_no_copper_leading_nowhere( client, fixture_project ):
     assert [ v for v in drc["violations"] if v["type"] in ( "track_dangling", "via_dangling" ) ] == []
     assert ok( client, "pcb_unrouted", { "net": "+5V" } )["unrouted"] == before
 
+
+def test_lengths_net_classes_and_meander_settings( client, tmp_path ):
+    """Arcs had no mid point or length and nets no length, so a tuned net could not be measured;
+    nets kept the class they had at load; the tuner's meander settings could not be changed."""
+    led_board( client, tmp_path / "len" )
+    net = next( p["net"] for p in ok( client, "pcb_query", { "type": "pad" } )["items"] if p["pad"] == "R1.2" )
+    ok( client, "netclasses_set", { "netclasses": [ { "name": "Sig", "trackWidth": 0.3 } ],
+                                    "patterns": [ { "pattern": net, "netclass": "Sig" } ] } )
+    nets = { n["net"]: n for n in ok( client, "pcb_query", { "type": "net" } )["items"] }
+    assert nets[net]["netclass"] == "Sig", nets[net]
+
+    ok( client, "pcb_track_add", { "points": [ [ 103, 103 ], [ 105, 103 ] ], "layer": "F.Cu", "net": net } )
+    added = ok( client, "pcb_query", { "type": "track", "area": { "x1": 102, "y1": 102, "x2": 106, "y2": 104 } } )["items"]
+    assert [ round( t["width"], 3 ) for t in added ] == [ 0.3 ]
+    ok( client, "undo" )
+
+    assert ok( client, "pcb_route", { "from": "R1.2", "to": "D1.2" } )["completed"]
+    straight = { n["net"]: n for n in ok( client, "pcb_query", { "type": "net" } )["items"] }[net]["trackLength"]
+    longest = max( ok( client, "pcb_query", { "type": "track", "net": net } )["items"], key=lambda t: t["length"] )
+    message = fail( client, "pcb_tune_length", { "track": longest["kiid"], "length": straight + 2,
+                                                 "minAmplitude": 1, "maxAmplitude": 0.5 } )
+    assert "minAmplitude" in message
+    tuned = ok( client, "pcb_tune_length", { "track": longest["kiid"], "length": straight + 2, "spacing": 0.5 } )
+
+    arcs = ok( client, "pcb_query", { "type": "arc", "net": net } )["items"]
+    assert arcs and all( "mid" in a and a["length"] > 0 for a in arcs )
+    pieces = sum( t["length"] for kind in ( "track", "arc" )
+                  for t in ok( client, "pcb_query", { "type": kind, "net": net } )["items"] )
+    length = { n["net"]: n for n in ok( client, "pcb_query", { "type": "net" } )["items"] }[net]["trackLength"]
+    assert abs( pieces - length ) < 0.002 and abs( length - tuned["length"] ) < 0.01, ( pieces, length, tuned )

@@ -698,12 +698,17 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
     tools.Add(
             { "pcb_tune_length",
               "Add meanders to a routed track so its net reaches a target length (mm), with KiCad's length "
-              "tuner. Give one track of the net (KIID) and the target; tolerance defaults to 0.1 mm. Returns the "
-              "length reached and the tuning status.",
+              "tuner. Give one track of the net (KIID) and the target; tolerance defaults to 0.1 mm. Meanders "
+              "come in steps: when the status is too_long or too_short, undo and retry with a smaller spacing "
+              "or amplitude (the tuner's settings: minAmplitude 0.2, maxAmplitude 1, spacing 0.6 mm). Returns "
+              "the length reached and the tuning status.",
               "pcb",
               pcbSchema( { { "track", { { "type", "string" } } },
                            { "length", { { "type", { "number", "string" } } } },
-                           { "tolerance", { { "type", { "number", "string" } } } } },
+                           { "tolerance", { { "type", { "number", "string" } } } },
+                           { "minAmplitude", { { "type", { "number", "string" } } } },
+                           { "maxAmplitude", { { "type", { "number", "string" } } } },
+                           { "spacing", { { "type", { "number", "string" } } } } },
                          { "track", "length" } ),
               [&aServices]( const JSON& aArgs, TOOL_CONTEXT& aContext )
               {
@@ -764,6 +769,23 @@ void RegisterPcbRouteTools( AGENT_SERVICES& aServices )
                               constraint.SetOpt( target );
                               constraint.SetMax( target + tolerance );
                               settings.SetTargetLength( constraint );
+
+                              if( aArgs.contains( "minAmplitude" ) )
+                                  settings.m_minAmplitude = PcbLength( aArgs["minAmplitude"], "minAmplitude" );
+
+                              if( aArgs.contains( "maxAmplitude" ) )
+                                  settings.m_maxAmplitude = PcbLength( aArgs["maxAmplitude"], "maxAmplitude" );
+
+                              if( aArgs.contains( "spacing" ) )
+                                  settings.m_spacing = PcbLength( aArgs["spacing"], "spacing" );
+
+                              if( settings.m_minAmplitude <= 0 || settings.m_maxAmplitude < settings.m_minAmplitude
+                                  || settings.m_spacing <= 0 )
+                              {
+                                  run.router.StopRouting();
+                                  throw TOOL_ERROR( "Meander settings need 0 < minAmplitude <= maxAmplitude and a "
+                                                    "positive spacing." );
+                              }
 
                               placer->UpdateSettings( settings );
 
